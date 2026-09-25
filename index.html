@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#d9d2ff">
   <title>HKIA Save Platform Patcher</title>
   <link rel="stylesheet" href="style.css">
+  <script type="module" src="script.js"></script>
 </head>
 <body>
   <div class="dream-sky" aria-hidden="true">
@@ -32,21 +33,66 @@
       <span class="star medium pink star-d2">★</span>
     </div>
   </div>
+
   <main class="app-shell">
     <header class="hero">
       <h1>HKIA Save Platform Patcher</h1>
     </header>
+
     <section class="patch-card" aria-live="polite">
-      <div class="view idle-view">
+      <div id="idleView" class="view idle-view">
         <div class="dream-mark" aria-hidden="true">
           <span class="moon"></span>
           <span class="mark-star">★</span>
         </div>
         <h2>Drop your HKIA save</h2>
-        <button class="primary-button" type="button">Choose Save File</button>
+        <button id="chooseButton" class="primary-button" type="button">Choose Save File</button>
         <p class="local-note">Your save is processed only in this browser.</p>
       </div>
+
+      <div id="processingView" class="view processing-view" hidden>
+        <div class="star-loader" aria-hidden="true">
+          <span>★</span>
+          <span>★</span>
+          <span>★</span>
+        </div>
+        <h2>Checking your save</h2>
+        <p>Checking the save and platform information.</p>
+      </div>
+
+      <div id="successView" class="view success-view" hidden>
+        <h2 id="resultTitle">Patched for Steam</h2>
+        <div class="info-grid">
+          <div class="info-item">
+            <span>Game Version</span>
+            <strong id="gameVersion">—</strong>
+          </div>
+          <div class="info-item">
+            <span>Play Time</span>
+            <strong id="playTime">—</strong>
+          </div>
+        </div>
+        <div class="button-row">
+          <button id="downloadAgainButton" class="primary-button" type="button">Download Again</button>
+          <button id="chooseAnotherButton" class="secondary-button" type="button">Patch Another Save</button>
+        </div>
+      </div>
+
+      <div id="errorView" class="view error-view" hidden>
+        <h2 id="errorTitle">This save could not be patched</h2>
+        <p id="errorMessage">No changes were made.</p>
+        <button id="errorChooseButton" class="secondary-button" type="button">Choose Another Save</button>
+      </div>
     </section>
+
+    <input id="fileInput" type="file" hidden>
   </main>
+
+  <div id="dropOverlay" class="drop-overlay" hidden>
+    <div class="drop-overlay-card">
+      <span class="overlay-star" aria-hidden="true">★</span>
+      <strong>Drop your HKIA save</strong>
+    </div>
+  </div>
 </body>
 </html>
