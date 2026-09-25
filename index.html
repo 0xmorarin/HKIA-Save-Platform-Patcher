@@ -8,82 +8,45 @@
   <meta name="theme-color" content="#d9d2ff">
   <title>HKIA Save Platform Patcher</title>
   <link rel="stylesheet" href="style.css">
-  <script type="module" src="script.js"></script>
 </head>
 <body>
   <div class="dream-sky" aria-hidden="true">
-    <span class="star star-a">✦</span>
-    <span class="star star-b">✧</span>
-    <span class="star star-c">✦</span>
-    <span class="star star-d">⋆</span>
     <span class="cloud cloud-a"></span>
     <span class="cloud cloud-b"></span>
-    <span class="glow glow-a"></span>
-    <span class="glow glow-b"></span>
-  </div>
-
-  <main class="app-shell">
-    <header class="hero">
-      <p class="eyebrow">Hello Kitty Island Adventure</p>
-      <h1>Save Platform Patcher</h1>
-      <p class="subtitle">Nintendo Switch ↔ Steam</p>
-    </header>
-
-    <section class="patch-card" aria-live="polite">
-      <div id="idleView" class="view idle-view">
-        <div class="dream-mark" aria-hidden="true">
-          <span class="moon"></span>
-          <span class="mark-star">✦</span>
-        </div>
-        <h2>Drop your HKIA save</h2>
-        <p>Drop a save anywhere on this page or choose it from your computer.</p>
-        <button id="chooseButton" class="primary-button" type="button">Choose Save File</button>
-        <p class="local-note">Your save is processed only in this browser.</p>
-      </div>
-
-      <div id="processingView" class="view processing-view" hidden>
-        <div class="loading-orbit" aria-hidden="true"><span></span></div>
-        <h2>Checking your save</h2>
-        <p>Checking the save and platform information.</p>
-      </div>
-
-      <div id="successView" class="view success-view" hidden>
-        <div class="result-sparkle" aria-hidden="true">✦</div>
-        <h2 id="resultTitle">Patched for Steam</h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span>Game Version</span>
-            <strong id="gameVersion">—</strong>
-          </div>
-          <div class="info-item">
-            <span>Play Time</span>
-            <strong id="playTime">—</strong>
-          </div>
-        </div>
-        <div class="button-row">
-          <button id="downloadAgainButton" class="primary-button" type="button">Download Again</button>
-          <button id="chooseAnotherButton" class="secondary-button" type="button">Patch Another Save</button>
-        </div>
-      </div>
-
-      <div id="errorView" class="view error-view" hidden>
-        <div class="error-symbol" aria-hidden="true">✧</div>
-        <h2 id="errorTitle">This save could not be patched</h2>
-        <p id="errorMessage">No changes were made.</p>
-        <button id="errorChooseButton" class="secondary-button" type="button">Choose Another Save</button>
-      </div>
-    </section>
-
-    <p class="drop-hint">You can drop another save anywhere on this page at any time.</p>
-    <input id="fileInput" type="file" hidden>
-  </main>
-
-  <div id="dropOverlay" class="drop-overlay" hidden>
-    <div class="drop-overlay-card">
-      <span class="overlay-stars" aria-hidden="true">✦ ⋆ ✧</span>
-      <strong>Drop your HKIA save</strong>
-      <span>Release anywhere to patch it</span>
+    <span class="cloud cloud-c"></span>
+    <div class="sprinkle">
+      <span class="star small soft star-a1">★</span>
+      <span class="star tiny lilac star-a2">★</span>
+      <span class="star medium star-a3">★</span>
+      <span class="star tiny pink soft star-a4">★</span>
+      <span class="star small lilac star-a5">★</span>
+      <span class="star medium pink star-b1">★</span>
+      <span class="star tiny soft star-b2">★</span>
+      <span class="star large lilac star-b3">★</span>
+      <span class="star tiny pink soft star-b4">★</span>
+      <span class="star small star-b5">★</span>
+      <span class="star tiny soft star-c1">★</span>
+      <span class="star small lilac star-c2">★</span>
+      <span class="star tiny pink soft star-c3">★</span>
+      <span class="star tiny soft star-d1">★</span>
+      <span class="star medium pink star-d2">★</span>
     </div>
   </div>
+  <main class="app-shell">
+    <header class="hero">
+      <h1>HKIA Save Platform Patcher</h1>
+    </header>
+    <section class="patch-card" aria-live="polite">
+      <div class="view idle-view">
+        <div class="dream-mark" aria-hidden="true">
+          <span class="moon"></span>
+          <span class="mark-star">★</span>
+        </div>
+        <h2>Drop your HKIA save</h2>
+        <button class="primary-button" type="button">Choose Save File</button>
+        <p class="local-note">Your save is processed only in this browser.</p>
+      </div>
+    </section>
+  </main>
 </body>
 </html>
