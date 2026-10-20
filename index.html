@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Patch Hello Kitty Island Adventure saves between Nintendo Switch and Steam.">
+  <meta name="description" content="Patch Hello Kitty Island Adventure saves between Nintendo Switch, Steam and Apple Arcade.">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#d9d2ff">
   <title>HKIA Save Platform Patcher</title>
@@ -61,8 +61,12 @@
       </div>
 
       <div id="successView" class="view success-view" hidden>
-        <h2 id="resultTitle">Patched for Steam</h2>
+        <h2 id="resultTitle">Successfully patched!</h2>
         <div class="info-grid">
+          <div class="info-item">
+            <span>Platform</span>
+            <strong id="platformName">—</strong>
+          </div>
           <div class="info-item">
             <span>Game Version</span>
             <strong id="gameVersion">—</strong>
@@ -72,10 +76,8 @@
             <strong id="playTime">—</strong>
           </div>
         </div>
-        <div class="button-row">
-          <button id="downloadAgainButton" class="primary-button" type="button">Download Again</button>
-          <button id="chooseAnotherButton" class="secondary-button" type="button">Patch Another Save</button>
-        </div>
+        <div id="downloadButtons" class="button-row"></div>
+        <button id="chooseAnotherButton" class="secondary-button" type="button">Patch Another Save</button>
       </div>
 
       <div id="errorView" class="view error-view" hidden>

@@ -1,14 +1,30 @@
 import {
+  PLATFORM,
   PLATFORM_LABELS,
   SavePatcherError,
   formatPlayTime,
+  parseSave,
   patchSavePlatform
 } from "./parser.js";
 
 const $ = (id) => document.getElementById(id);
 
-let currentDownloadUrl = null;
-let currentPatchedBytes = null;
+let downloadUrls = [];
+
+const SAVE_FILE_NAMES = Object.freeze({
+  [PLATFORM.WINDOWS_STEAM]: (slot) => `save_${slot}.save`,
+  [PLATFORM.SWITCH]: (slot) => `save_${slot}.save`,
+  [PLATFORM.APPLE_ARCADE]: (slot) => `Save_HeroesFate_${slot}.save`
+});
+
+function saveSlot(fileName) {
+  return /^(?:save|Save_HeroesFate)_(\d+)\.save$/i.exec(fileName ?? "")?.[1] ?? "0";
+}
+
+function saveFileName(platform, sourceFileName) {
+  return SAVE_FILE_NAMES[platform](saveSlot(sourceFileName));
+}
+
 let processingId = 0;
 let dragDepth = 0;
 
@@ -18,23 +34,16 @@ function setView(name) {
   }
 }
 
-function clearDownload() {
-  if (currentDownloadUrl) URL.revokeObjectURL(currentDownloadUrl);
-  currentDownloadUrl = null;
-  currentPatchedBytes = null;
+function clearDownloads() {
+  for (const url of downloadUrls) URL.revokeObjectURL(url);
+  downloadUrls = [];
+  $("downloadButtons").replaceChildren();
 }
 
-function prepareDownload(bytes) {
-  clearDownload();
-  currentPatchedBytes = bytes;
-  currentDownloadUrl = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
-}
-
-function downloadPatchedSave() {
-  if (!currentDownloadUrl || !currentPatchedBytes) return;
+function downloadFile(url, fileName) {
   const link = document.createElement("a");
-  link.href = currentDownloadUrl;
-  link.download = "save_0.save";
+  link.href = url;
+  link.download = fileName;
   link.style.display = "none";
   document.body.appendChild(link);
   link.click();
@@ -45,12 +54,26 @@ function openFilePicker() {
   $("fileInput").click();
 }
 
-function showSuccess(result) {
-  const target = PLATFORM_LABELS[result.after.platformType];
+function showSuccess(info, results, sourceFileName) {
+  clearDownloads();
+  
+  $("platformName").textContent = PLATFORM_LABELS[info.platformType];
+  $("gameVersion").textContent = info.applicationVersion;
+  $("playTime").textContent = formatPlayTime(info.timePlayedTicks);
 
-  $("resultTitle").textContent = `Patched for ${target}`;
-  $("gameVersion").textContent = result.before.applicationVersion;
-  $("playTime").textContent = formatPlayTime(result.before.timePlayedTicks);
+  for (const result of results) {
+    const url = URL.createObjectURL(new Blob([result.bytes], { type: "application/octet-stream" }));
+    downloadUrls.push(url);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary-button";
+    button.textContent = `Download For ${PLATFORM_LABELS[result.targetPlatform]}`;
+    const fileName = saveFileName(result.targetPlatform, sourceFileName);
+    button.title = fileName;
+    button.addEventListener("click", () => downloadFile(url, fileName));
+    $("downloadButtons").appendChild(button);
+  }
+
   setView("success");
 }
 
@@ -79,18 +102,18 @@ function errorText(error) {
   if (error.code === "unsupported_platform") {
     return {
       title: "This save platform is not supported",
-      message: "This patcher currently supports Nintendo Switch and Steam saves only. No changes were made."
+      message: "This patcher currently supports Nintendo Switch, Steam and Apple Arcade saves only. No changes were made."
     };
   }
 
   return {
     title: "Patch verification failed",
-    message: "The patched save did not pass the safety checks, so no file was downloaded."
+    message: "The patched save did not pass the safety checks, so no download was offered."
   };
 }
 
 function showError(error) {
-  clearDownload();
+  clearDownloads();
   const text = errorText(error);
   $("errorTitle").textContent = text.title;
   $("errorMessage").textContent = text.message;
@@ -101,17 +124,16 @@ async function processFile(file) {
   if (!file) return;
 
   const id = ++processingId;
-  clearDownload();
+  clearDownloads();
   setView("processing");
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     if (id !== processingId) return;
-    const result = patchSavePlatform(bytes);
+    const info = parseSave(bytes);
+    const results = Object.values(PLATFORM).filter((target) => target !== info.platformType).map((target) => patchSavePlatform(bytes, target));
     if (id !== processingId) return;
-    prepareDownload(result.bytes);
-    showSuccess(result);
-    downloadPatchedSave();
+    showSuccess(info, results, file.name);
   } catch (error) {
     if (id !== processingId) return;
     showError(error);
@@ -165,7 +187,6 @@ function init() {
   $("chooseButton").addEventListener("click", openFilePicker);
   $("chooseAnotherButton").addEventListener("click", openFilePicker);
   $("errorChooseButton").addEventListener("click", openFilePicker);
-  $("downloadAgainButton").addEventListener("click", downloadPatchedSave);
 
   $("fileInput").addEventListener("change", () => {
     const file = $("fileInput").files?.[0];
@@ -175,9 +196,7 @@ function init() {
 
   initDragAndDrop();
 
-  window.addEventListener("beforeunload", () => {
-    if (currentDownloadUrl) URL.revokeObjectURL(currentDownloadUrl);
-  });
+  window.addEventListener("beforeunload", clearDownloads);
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -13,16 +13,19 @@ const LZ4_SECTION_MAGIC = Uint8Array.from([
 
 export const PLATFORM = Object.freeze({
   WINDOWS_STEAM: 1,
+  APPLE_ARCADE: 7,
   SWITCH: 9
 });
 
 export const PLATFORM_LABELS = Object.freeze({
   [PLATFORM.WINDOWS_STEAM]: "Steam",
+  [PLATFORM.APPLE_ARCADE]: "Apple Arcade",
   [PLATFORM.SWITCH]: "Nintendo Switch"
 });
 
 const DLC_PLATFORM = Object.freeze({
   [PLATFORM.WINDOWS_STEAM]: 4,
+  [PLATFORM.APPLE_ARCADE]: 2,
   [PLATFORM.SWITCH]: 3
 });
 
@@ -1129,20 +1132,9 @@ export function parseSave(input) {
   };
 }
 
-export function targetPlatformFor(platformType) {
-  if (platformType === PLATFORM.WINDOWS_STEAM) return PLATFORM.SWITCH;
-  if (platformType === PLATFORM.SWITCH) return PLATFORM.WINDOWS_STEAM;
-  return null;
-}
-
-export function patchSavePlatform(input) {
+export function patchSavePlatform(input, requestedTarget) {
   const sourceBytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const before = parseSave(sourceBytes);
-  const targetPlatform = targetPlatformFor(before.platformType);
-
-  if (targetPlatform == null) fail("unsupported_platform", "This HKIA save uses an unsupported platform.");
-
-  const targetDlcPlatform = DLC_PLATFORM[targetPlatform];
   const lz4Before = parseLz4Section(sourceBytes, before.platformOffset + before.platformTokenLength);
   const prefix = sourceBytes.slice(0, lz4Before ? lz4Before.wrapperOffset : sourceBytes.length);
   const token = readInteger(prefix, before.platformOffset, "verification_failed");
@@ -1150,6 +1142,9 @@ export function patchSavePlatform(input) {
   if (token.next - token.start !== before.platformTokenLength || token.value !== before.platformType) {
     fail("verification_failed", "The platform field changed unexpectedly before patching.");
   }
+
+  const targetPlatform = requestedTarget;
+  const targetDlcPlatform = DLC_PLATFORM[targetPlatform];
 
   writeSmallIntegerInPlace(prefix, token, targetPlatform);
 
