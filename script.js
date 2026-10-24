@@ -52,19 +52,35 @@ function clearDownloads() {
   activeDownloadUrls = new Set();
 }
 
+const FEEDBACK_THEMES = ["steam", "switch", "apple", "ps5"];
+
 function clearFeedback() {
   const el = $("conversionFeedback");
-  el.textContent = "";
+  el.replaceChildren();
   el.hidden = true;
-  el.classList.remove("feedback-error", "feedback-success");
+  el.classList.remove("feedback-error", "feedback-success", ...FEEDBACK_THEMES.map((key) => `feedback--${key}`));
 }
 
 function feedback(message, isError = false) {
+  clearFeedback();
   const el = $("conversionFeedback");
   el.textContent = message;
   el.hidden = false;
-  el.classList.toggle("feedback-error", isError);
-  el.classList.toggle("feedback-success", !isError);
+  el.classList.add(isError ? "feedback-error" : "feedback-success");
+}
+
+function showDownloadFeedback(targetGroup, fileName) {
+  clearFeedback();
+  const el = $("conversionFeedback");
+  el.classList.add("feedback-success", `feedback--${targetGroup.key}`);
+  const heading = document.createElement("strong");
+  heading.className = "feedback-heading";
+  heading.textContent = `${targetGroup.label} download started`;
+  const detail = document.createElement("span");
+  detail.className = "feedback-filename";
+  detail.textContent = fileName;
+  el.append(heading, detail);
+  el.hidden = false;
 }
 
 function errorText(error) {
@@ -109,7 +125,7 @@ function convertAndDownload(targetGroup) {
       throw new Error("Unexpected conversion result.");
     }
     downloadBytes(result.bytes, fileName);
-    feedback(`Download started: ${fileName}`);
+    showDownloadFeedback(targetGroup, fileName);
   } catch (error) {
     console.error("HKIA save conversion failed", error);
     feedback(`Conversion to ${targetGroup.label} failed verification. No file was downloaded.`, true);

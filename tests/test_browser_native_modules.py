@@ -22,7 +22,7 @@ html = html.replace('<script type="module" src="script.js"></script>', '')
 assert html != raw_html
 assert script.count('from "./parser.js"') == 1
 
-result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'filename_independent_conversion': False,'original_name_preserved': False,'legacy_alias_removed': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'pageerrors': []}
+result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'filename_independent_conversion': False,'original_name_preserved': False,'legacy_alias_removed': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'notice_theme_checks':{}, 'notice_reset':False,'pageerrors': []}
 
 with sync_playwright() as play:
     chromium_path = os.environ.get('CHROMIUM_PATH') or shutil.which('chromium') or shutil.which('chromium-browser')
@@ -53,6 +53,7 @@ with sync_playwright() as play:
     def send(data:bytes,name='save_0.save'):
         page.locator('#fileInput').set_input_files([{'name':name,'mimeType':'application/octet-stream','buffer':data}])
         page.locator('#successView').wait_for(state='visible',timeout=30000)
+        assert page.locator('#conversionFeedback').is_hidden()
     expected={'steam':{'switch':'rgb(214, 47, 73)','apple':'rgb(236, 127, 177)','ps5':'rgb(143, 99, 201)'},
               'switch':{'steam':'rgb(88, 191, 230)','apple':'rgb(236, 127, 177)','ps5':'rgb(143, 99, 201)'}}
     for raw,source in zip(SRC,('steam','switch')):
@@ -68,6 +69,19 @@ with sync_playwright() as play:
             with page.expect_download(timeout=60000) as entry:
                 button.click()
             download=entry.value
+            notice=page.locator('#conversionFeedback')
+            assert notice.is_visible(),f'{source}->{target}: no status notice'
+            assert notice.get_attribute('role')=='status'
+            assert notice.get_attribute('aria-live')=='polite'
+            assert f'feedback--{target}' in (notice.get_attribute('class') or '')
+            assert notice.locator('.feedback-heading').inner_text() == f'{button.locator(".destination-name").inner_text()} download started'
+            assert notice.locator('.feedback-filename').inner_text() == 'save_0.save'
+            assert notice.evaluate('(el)=>getComputedStyle(el).borderLeftWidth')=='5px'
+            assert notice.evaluate('(el)=>getComputedStyle(el).fontSize')=='14px'
+            label_rgb=notice.locator('.feedback-heading').evaluate('(el)=>getComputedStyle(el).color')
+            theme_colors={'steam':'rgb(19, 121, 159)','switch':'rgb(170, 32, 56)','apple':'rgb(172, 40, 105)','ps5':'rgb(108, 57, 169)'}
+            assert label_rgb==theme_colors[target],(target,label_rgb)
+            result['notice_theme_checks'][f'{source}->{target}']=label_rgb
             expected_name='save_0.save'
             assert download.suggested_filename==expected_name,(download.suggested_filename,expected_name)
             with tempfile.TemporaryDirectory() as d:
@@ -78,6 +92,14 @@ with sync_playwright() as play:
             result['actual_save_downloads']+=1
     if os.environ.get('HKIA_SCREENSHOT'):
         page.screenshot(path=os.environ['HKIA_SCREENSHOT'])
+    # Mobile layout must remain readable with the prominent notice visible.
+    page.set_viewport_size({'width':390,'height':844})
+    mobile_width=page.evaluate('document.documentElement.scrollWidth')
+    assert mobile_width<=390,f'Horizontal mobile overflow {mobile_width}'
+    assert page.locator('#conversionFeedback').is_visible()
+    if os.environ.get('HKIA_MOBILE_SCREENSHOT'):
+        page.screenshot(path=os.environ['HKIA_MOBILE_SCREENSHOT'],full_page=True)
+    page.set_viewport_size({'width':1440,'height':900})
 
     # Slot spelling matters. The binary is unchanged, name can include leading zeros.
     send(SRC[0].read_bytes(), 'save_0003.save')
@@ -146,6 +168,9 @@ with sync_playwright() as play:
     page.locator('.destination--switch').click()
     page.wait_for_timeout(100)
     assert 'failed verification' in page.locator('#conversionFeedback').inner_text().lower()
+    assert 'feedback-error' in page.locator('#conversionFeedback').get_attribute('class')
+    assert not any(f'feedback--{key}' in page.locator('#conversionFeedback').get_attribute('class') for key in ('steam','switch','apple','ps5'))
+    result['notice_reset']=True
     result['missing_lz4_rejected_on_download']=True
 
     # Drag and drop: real browser DataTransfer object with actual File.
