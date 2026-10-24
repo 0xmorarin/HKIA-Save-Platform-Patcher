@@ -68,7 +68,7 @@ with sync_playwright() as play:
             with page.expect_download(timeout=60000) as entry:
                 button.click()
             download=entry.value
-            expected_name='Save_HeroesFate_0.save' if target=='apple' else 'save_0.save'
+            expected_name='save_0.save'
             assert download.suggested_filename==expected_name,(download.suggested_filename,expected_name)
             with tempfile.TemporaryDirectory() as d:
                 out=Path(d) / expected_name
@@ -85,6 +85,19 @@ with sync_playwright() as play:
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--switch').click()
     assert entry.value.suggested_filename=='save_0003.save'
+    # Apple destination must keep the same save_<slot>.save convention.
+    send(SRC[0].read_bytes(), 'save_0003.save')
+    assert page.locator('.destination--apple').get_attribute('title')=='save_0003.save'
+    with page.expect_download(timeout=60000) as entry:
+        page.locator('.destination--apple').click()
+    assert entry.value.suggested_filename=='save_0003.save'
+
+    # The previously used Apple Arcade filename remains a supported INPUT alias.
+    send(SRC[1].read_bytes(), 'Save_HeroesFate_004.save')
+    assert page.locator('.destination--steam').get_attribute('title')=='save_004.save'
+    with page.expect_download(timeout=60000) as entry:
+        page.locator('.destination--steam').click()
+    assert entry.value.suggested_filename=='save_004.save'
     result['slot_preserved']=True
 
     # Missing slot must fail closed, rather than silently write to save_0.save.

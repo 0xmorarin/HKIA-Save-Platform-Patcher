@@ -15,7 +15,7 @@ const $ = (id) => document.getElementById(id);
 const PLATFORM_GROUPS = Object.freeze([
   Object.freeze({ key: "steam", label: "Steam", inputs: [PLATFORM.WINDOWS_STEAM], output: PLATFORM.WINDOWS_STEAM, enabled: true, fileName: (slot) => `save_${slot}.save` }),
   Object.freeze({ key: "switch", label: "Nintendo Switch", inputs: [PLATFORM.SWITCH], output: PLATFORM.SWITCH, enabled: true, fileName: (slot) => `save_${slot}.save` }),
-  Object.freeze({ key: "apple", label: "Apple Arcade", inputs: [4, 5, 6, 7], output: PLATFORM.APPLE_ARCADE, enabled: true, fileName: (slot) => `Save_HeroesFate_${slot}.save` }),
+  Object.freeze({ key: "apple", label: "Apple Arcade", inputs: [4, 5, 6, 7], output: PLATFORM.APPLE_ARCADE, enabled: true, fileName: (slot) => `save_${slot}.save` }),
   Object.freeze({ key: "ps5", label: "PlayStation 5", inputs: [PLATFORM.PS5], output: PLATFORM.PS5, enabled: true, fileName: (slot) => `save_${slot}.save` })
 ]);
 
