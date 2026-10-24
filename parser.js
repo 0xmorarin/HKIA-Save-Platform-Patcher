@@ -1,7 +1,6 @@
 const HEADER_SIZE = 32;
 const MAX_LZ4_RAW_BLOCK = 32768;
 const DLC_MODEL_UNION_TAG = 30;
-const DLC_MODEL_ID = 2;
 const LZ4_BLOCK_ARRAY_EXT_TYPE = 98;
 
 const LZ4_SECTION_MAGIC = Uint8Array.from([
@@ -767,7 +766,7 @@ function parseContentState(payload, offset) {
   };
 }
 
-function parseDlcModelAt(payload, offset) {
+function parseDlcModelAt(payload, offset, dbNextId) {
   const start = offset;
   const union = readContainerHeader(payload, offset, "array", "verification_failed");
   if (union.count !== 2) fail("verification_failed", "The DLC model union uses an unsupported structure.");
@@ -782,7 +781,10 @@ function parseDlcModelAt(payload, offset) {
 
   const modelId = readInteger(payload, cursor, "verification_failed");
   cursor = modelId.next;
-  if (modelId.value !== DLC_MODEL_ID) fail("verification_failed", "The DLC model identifier is not supported.");
+  // This is a per-save database document identifier, not a fixed DLC schema version.
+  if (!Number.isSafeInteger(modelId.value) || modelId.value <= 0 || modelId.value > dbNextId) {
+    fail("verification_failed", "The DLC model document identifier is invalid.");
+  }
 
   const bundleHeader = readContainerHeader(payload, cursor, "array", "verification_failed");
   if (bundleHeader.count > 256) fail("verification_failed", "The DLC bundle count is unexpectedly large.");
@@ -841,7 +843,7 @@ function findDlcModel(payload, dbRoot) {
 
   for (const location of locations) {
     try {
-      candidates.push(parseDlcModelAt(payload, location));
+      candidates.push(parseDlcModelAt(payload, location, dbRoot.nextId));
     } catch {
       fail("verification_failed", "A DLC model tag was found with an unsupported structure.");
     }

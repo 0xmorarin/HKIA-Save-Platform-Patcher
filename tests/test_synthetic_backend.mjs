@@ -7,26 +7,26 @@ const {parseSave,patchSavePlatform}=await import(pathToFileURL(path.join(process
 const SOURCE_IDS=[1,4,5,6,7,9,10],TARGET_IDS=[1,7,9,10];
 const grp=(n)=>[4,5,6,7].includes(n)?'apple':String(n);
 const mappedDlc=n=>[4,5,6,7].includes(n)?2:n===1?4:n===9?3:5;
-const mpNum=n=>n<=127?[n]:[0xcc,n];
+const mpNum=n=>n<=127?[n]:n<=255?[0xcc,n]:n<=65535?[0xcd,n>>>8,n&255]:[0xce,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];
 const mpArr=parts=>[0x90+parts.length,...parts.flat()];
 const guid=parts=>parts.flatMap(mpNum);
 const VERSION=Array.from('3.0.0',ch=>ch.charCodeAt(0));
 const HEADER=new Uint8Array(32);
 const MAGIC=Uint8Array.from([0xa1,0xa2,0xf8,0x33,0x3c,0x66,0xec,0x45,0x5b,0xaa,0x2d,0xfc,0x63,0x25,0xc2,0x43,0x7a,0x77,0x9c,0x99,0x06,0xee,0xcf,0xf0,0xc0,0x22,0xe5,0xf6,0xb6,0xca,0x73,0xb8]);
 const ID_A=[11,22,33,44],ID_B=[55,66,77,88],ID_C=[12,34,56,78];
-function buildDlcModel(dlc){
+function buildDlcModel(dlc,modelId=2){
   const bundles=mpArr([
     mpArr([guid(ID_A),[0xc3],mpArr([mpNum(dlc)])]),
     mpArr([guid(ID_B),[0xc2],mpArr([])])
   ]);
   const contents=mpArr([mpArr([guid(ID_C),[0xc3],mpArr([guid(ID_A)])])]);
-  const body=mpArr([mpNum(2),bundles,contents,mpArr([mpNum(dlc)])]);
+  const body=mpArr([mpNum(modelId),bundles,contents,mpArr([mpNum(dlc)])]);
   return mpArr([[0xd2,0,0,0,30],body]);
 }
-function buildFixture(platform,{lz4=true}={}){
+function buildFixture(platform,{lz4=true,modelId=2,nextId=Math.max(3,modelId+1)}={}){
   const prefix=[...HEADER,0x98,...guid([1,2,3,4]),0xa5,...VERSION,1,0xc0,4,0x80,0x90,0x91,platform];
   if(!lz4)return Uint8Array.from(prefix);
-  const raw=mpArr([mpNum(1),mpNum(1),mpArr([buildDlcModel(mappedDlc(platform))])]);
+  const raw=mpArr([mpNum(1),mpNum(nextId),mpArr([buildDlcModel(mappedDlc(platform),modelId)])]);
   assert.ok(raw.length>15&&raw.length<127);
   const compressed=[0xf0,raw.length-15,...raw]; // Valid final literal-only LZ4 block
   const wrapper=[0x92,0xc7,1,98,raw.length,0xc6,0,0,0,compressed.length,...compressed];
@@ -84,10 +84,26 @@ for(const source of SOURCE_IDS){
     dlcTests++;
   }
 }
+// A DLC model document may have a dynamic ID (e.g. Apple Arcade 5429).
+let dynamicCases=0;
+for(const modelId of [2, 137, 5429, 65535]) {
+  for(const platform of [1,4,7,9,10]) {
+    const input=buildFixture(platform,{modelId});
+    const target= platform===1?9:1;
+    const result=patchSavePlatform(input,target);
+    assert.equal(parseSave(result.bytes).platformType,target);
+    const roundTrip=patchSavePlatform(result.bytes,platform===4?7:platform);
+    assert.deepEqual(rawLz4Payload(roundTrip.bytes),rawLz4Payload(input));
+    dynamicCases++;
+  }
+}
+// A model document ID beyond the database next ID must be rejected.
+assert.throws(()=>patchSavePlatform(buildFixture(7,{modelId:5429,nextId:100}),1),{code:'verification_failed'});
+dynamicCases++;
 for(const bad of [0,2,3,8,11,12,99,128,-1,undefined]){
   assert.throws(()=>patchSavePlatform(buildFixture(1),bad),{code:'unsupported_platform'});rejections++;
 }
 for(const bad of [0,2,3,8,11,12,99]){
   assert.throws(()=>patchSavePlatform(buildFixture(bad),9),{code:'unsupported_platform'});rejections++;
 }
-console.log(JSON.stringify({status:'PASS',missingLz4Rejections:headerTests,dlcRoundtrips:dlcTests,expectedRejections:rejections,total:headerTests+dlcTests+rejections},null,2));
+console.log(JSON.stringify({status:'PASS',missingLz4Rejections:headerTests,dlcRoundtrips:dlcTests,expectedRejections:rejections,dynamicIdTests:dynamicCases,total:headerTests+dlcTests+rejections+dynamicCases},null,2));
