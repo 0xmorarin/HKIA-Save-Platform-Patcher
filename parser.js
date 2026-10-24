@@ -13,17 +13,26 @@ const LZ4_SECTION_MAGIC = Uint8Array.from([
 
 export const PLATFORM = Object.freeze({
   WINDOWS_STEAM: 1,
-  SWITCH: 9
+  APPLE_ARCADE: 7,
+  SWITCH: 9,
+  PS5: 10
 });
 
 export const PLATFORM_LABELS = Object.freeze({
   [PLATFORM.WINDOWS_STEAM]: "Steam",
-  [PLATFORM.SWITCH]: "Nintendo Switch"
+  4: "Apple Arcade",
+  5: "Apple Arcade",
+  6: "Apple Arcade",
+  [PLATFORM.APPLE_ARCADE]: "Apple Arcade",
+  [PLATFORM.SWITCH]: "Nintendo Switch",
+  [PLATFORM.PS5]: "PlayStation 5"
 });
 
 const DLC_PLATFORM = Object.freeze({
   [PLATFORM.WINDOWS_STEAM]: 4,
-  [PLATFORM.SWITCH]: 3
+  [PLATFORM.APPLE_ARCADE]: 2,
+  [PLATFORM.SWITCH]: 3,
+  [PLATFORM.PS5]: 5
 });
 
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
@@ -1129,27 +1138,41 @@ export function parseSave(input) {
   };
 }
 
-export function targetPlatformFor(platformType) {
-  if (platformType === PLATFORM.WINDOWS_STEAM) return PLATFORM.SWITCH;
-  if (platformType === PLATFORM.SWITCH) return PLATFORM.WINDOWS_STEAM;
+const SUPPORTED_SOURCE_IDS = new Set([1, 4, 5, 6, 7, 9, 10]);
+const SUPPORTED_TARGET_IDS = new Set([1, 7, 9, 10]);
+function platformGroup(platformType) {
+  if ([4, 5, 6, 7].includes(platformType)) return "apple";
+  if (platformType === 1) return "steam";
+  if (platformType === 9) return "switch";
+  if (platformType === 10) return "ps5";
   return null;
 }
 
-export function patchSavePlatform(input) {
+export function patchSavePlatform(input, requestedTarget) {
   const sourceBytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const before = parseSave(sourceBytes);
-  const targetPlatform = targetPlatformFor(before.platformType);
-
-  if (targetPlatform == null) fail("unsupported_platform", "This HKIA save uses an unsupported platform.");
-
-  const targetDlcPlatform = DLC_PLATFORM[targetPlatform];
+  if (!SUPPORTED_SOURCE_IDS.has(before.platformType)) {
+    fail("unsupported_platform", "The source platform is not supported for conversion.");
+  }
+  if (!SUPPORTED_TARGET_IDS.has(requestedTarget)) {
+    fail("unsupported_platform", "The requested destination platform is not supported.");
+  }
+  if (platformGroup(before.platformType) === platformGroup(requestedTarget)) {
+    fail("unsupported_platform", "Conversion within the same platform group is unnecessary.");
+  }
   const lz4Before = parseLz4Section(sourceBytes, before.platformOffset + before.platformTokenLength);
+  if (!lz4Before) {
+    fail("verification_failed", "This save is missing its required HKIA LZ4 payload section.");
+  }
   const prefix = sourceBytes.slice(0, lz4Before ? lz4Before.wrapperOffset : sourceBytes.length);
   const token = readInteger(prefix, before.platformOffset, "verification_failed");
 
   if (token.next - token.start !== before.platformTokenLength || token.value !== before.platformType) {
     fail("verification_failed", "The platform field changed unexpectedly before patching.");
   }
+
+  const targetPlatform = requestedTarget;
+  const targetDlcPlatform = DLC_PLATFORM[targetPlatform];
 
   writeSmallIntegerInPlace(prefix, token, targetPlatform);
 

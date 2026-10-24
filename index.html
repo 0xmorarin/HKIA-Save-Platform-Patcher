@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Patch Hello Kitty Island Adventure saves between Nintendo Switch and Steam.">
+  <meta name="description" content="Convert Hello Kitty Island Adventure raw saves between Nintendo Switch, Steam, Apple Arcade and PlayStation 5.">
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#d9d2ff">
   <title>HKIA Save Platform Patcher</title>
@@ -45,8 +45,8 @@
           <span class="moon"></span>
           <span class="mark-star">★</span>
         </div>
-        <h2>Drop your HKIA save</h2>
-        <button id="chooseButton" class="primary-button" type="button">Choose Save File</button>
+        <h2>Drop a save here</h2>
+        <button id="chooseButton" class="primary-button" type="button">Choose file</button>
         <p class="local-note">Your save is processed only in this browser.</p>
       </div>
 
@@ -56,26 +56,35 @@
           <span>★</span>
           <span>★</span>
         </div>
-        <h2>Checking your save</h2>
+        <h2>Reading save…</h2>
         <p>Checking the save and platform information.</p>
       </div>
 
       <div id="successView" class="view success-view" hidden>
-        <h2 id="resultTitle">Patched for Steam</h2>
+        <h2 id="resultTitle" class="sr-only">Save loaded</h2>
+        <div class="loaded-file">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span id="saveFileName"></span>
+          <button id="chooseAnotherButton" class="file-change" type="button" title="Choose another save">Change</button>
+        </div>
         <div class="info-grid">
           <div class="info-item">
-            <span>Game Version</span>
+            <span>Platform</span>
+            <strong id="platformName">—</strong>
+          </div>
+          <div class="info-item">
+            <span>Version</span>
             <strong id="gameVersion">—</strong>
           </div>
           <div class="info-item">
-            <span>Play Time</span>
+            <span>Play time</span>
             <strong id="playTime">—</strong>
           </div>
         </div>
-        <div class="button-row">
-          <button id="downloadAgainButton" class="primary-button" type="button">Download Again</button>
-          <button id="chooseAnotherButton" class="secondary-button" type="button">Patch Another Save</button>
-        </div>
+        <p class="destination-label">Convert to</p>
+        <div id="downloadButtons" class="button-row"></div>
+        <p id="conversionFeedback" class="conversion-feedback" role="status" aria-live="polite" hidden></p>
+
       </div>
 
       <div id="errorView" class="view error-view" hidden>
