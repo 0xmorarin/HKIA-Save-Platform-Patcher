@@ -29,28 +29,11 @@ function parseSlot(fileName) {
   return Number.isSafeInteger(slot) && slot >= 0 ? match[1] : null;
 }
 
-// An unrecognized filename never affects binary validation or conversion.
-// If the slot cannot be inferred, download as converted.save unless the user
-// explicitly supplies one. Never guess slot 0 or treat other titles as HKIA names.
+// Filename never determines whether a save is valid or which platform it belongs to.
+// Retain a standard save_<slot>.save filename; otherwise preserve the uploaded
+// filename verbatim. Users can rename the downloaded file as needed.
 function outputFileName(state) {
-  if (state.slot !== null) return `save_${state.slot}.save`;
-  const entered = $("outputSlotInput").value.trim();
-  if (entered === "") return "converted.save";
-  if (!/^\d+$/.test(entered) || !Number.isSafeInteger(Number(entered))) {
-    throw new SavePatcherError("invalid_slot", "Enter a valid, non-negative save slot number.");
-  }
-  return `save_${entered}.save`;
-}
-
-function refreshFileNames() {
-  if (!currentSave) return;
-  for (const button of $("downloadButtons").querySelectorAll(".destination-button:not(:disabled)")) {
-    try {
-      button.title = outputFileName(currentSave);
-    } catch {
-      button.title = "Enter a valid save slot number";
-    }
-  }
+  return state.slot !== null ? `save_${state.slot}.save` : state.fileName;
 }
 
 let currentSave = null;
@@ -128,10 +111,6 @@ function convertAndDownload(targetGroup) {
     downloadBytes(result.bytes, fileName);
     feedback(`Download started: ${fileName}`);
   } catch (error) {
-    if (error instanceof SavePatcherError && error.code === "invalid_slot") {
-      feedback(error.message, true);
-      return;
-    }
     console.error("HKIA save conversion failed", error);
     feedback(`Conversion to ${targetGroup.label} failed verification. No file was downloaded.`, true);
   }
@@ -144,8 +123,6 @@ function showSave(state) {
   $("playTime").textContent = formatPlayTime(state.info.timePlayedTicks);
   $("resultTitle").textContent = "Save loaded";
   $("saveFileName").textContent = state.fileName;
-  $("slotOverride").hidden = state.slot !== null;
-  $("outputSlotInput").value = "";
   clearFeedback();
   const buttons = $("downloadButtons");
   buttons.replaceChildren();
@@ -236,10 +213,6 @@ function initDragAndDrop() {
 }
 
 function init() {
-  $("outputSlotInput").addEventListener("input", () => {
-    clearFeedback();
-    refreshFileNames();
-  });
   $("chooseButton").addEventListener("click", openFilePicker);
   $("chooseAnotherButton").addEventListener("click", openFilePicker);
   $("errorChooseButton").addEventListener("click", openFilePicker);
