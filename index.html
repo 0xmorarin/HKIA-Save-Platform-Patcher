@@ -81,6 +81,11 @@
             <strong id="playTime">—</strong>
           </div>
         </div>
+        <div id="slotOverride" class="slot-override" hidden>
+          <label for="outputSlotInput">Save slot (optional)</label>
+          <input id="outputSlotInput" type="text" inputmode="numeric" autocomplete="off" maxlength="16" placeholder="e.g. 0" aria-describedby="slotOverrideHelp">
+          <p id="slotOverrideHelp">No slot found in this filename. Leave blank to download as converted.save, or enter a slot to use save_&lt;slot&gt;.save.</p>
+        </div>
         <p class="destination-label">Convert to</p>
         <div id="downloadButtons" class="button-row"></div>
         <p id="conversionFeedback" class="conversion-feedback" role="status" aria-live="polite" hidden></p>

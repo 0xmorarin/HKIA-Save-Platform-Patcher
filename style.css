@@ -580,3 +580,11 @@ h1 {
 }
 
 @media (max-width:760px) { .button-row .destination-button .destination-name { font-size:1.08rem; font-weight:800; line-height:1.2; } }
+
+/* Only shown when the input name cannot identify a slot. The converter and
+   three destination actions always remain available regardless of filename. */
+.slot-override { margin:15px 0 0; padding:11px 13px; border:1px solid #e6dcf0; border-radius:12px; background:#faf8fd; text-align:left; }
+.slot-override label { display:block; margin-bottom:6px; font-size:.78rem; font-weight:750; color:#675682; }
+.slot-override input { width:min(100%, 180px); padding:9px 11px; background:white; border:1px solid #d9cce7; border-radius:9px; color:#5d5278; font:inherit; font-size:.9rem; }
+.slot-override input:focus-visible { outline:2px solid #977ec2; outline-offset:2px; }
+.slot-override p { margin:7px 0 0 !important; color:#8a7ca0 !important; font-size:.74rem !important; line-height:1.4; }

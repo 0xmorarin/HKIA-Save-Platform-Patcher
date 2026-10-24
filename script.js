@@ -22,11 +22,35 @@ const PLATFORM_GROUPS = Object.freeze([
 const groupFor = (id) => PLATFORM_GROUPS.find((group) => group.inputs.includes(id)) ?? null;
 
 function parseSlot(fileName) {
-  const match = /^(?:save|Save_HeroesFate)_(\d+)\.save$/i.exec(fileName || "");
+  const match = /^save_(\d+)\.save$/i.exec(fileName || "");
   if (!match) return null;
   const slot = Number(match[1]);
   // Preserve slot digits exactly (including leading zeroes). Never guess slot 0.
   return Number.isSafeInteger(slot) && slot >= 0 ? match[1] : null;
+}
+
+// An unrecognized filename never affects binary validation or conversion.
+// If the slot cannot be inferred, download as converted.save unless the user
+// explicitly supplies one. Never guess slot 0 or treat other titles as HKIA names.
+function outputFileName(state) {
+  if (state.slot !== null) return `save_${state.slot}.save`;
+  const entered = $("outputSlotInput").value.trim();
+  if (entered === "") return "converted.save";
+  if (!/^\d+$/.test(entered) || !Number.isSafeInteger(Number(entered))) {
+    throw new SavePatcherError("invalid_slot", "Enter a valid, non-negative save slot number.");
+  }
+  return `save_${entered}.save`;
+}
+
+function refreshFileNames() {
+  if (!currentSave) return;
+  for (const button of $("downloadButtons").querySelectorAll(".destination-button:not(:disabled)")) {
+    try {
+      button.title = outputFileName(currentSave);
+    } catch {
+      button.title = "Enter a valid save slot number";
+    }
+  }
 }
 
 let currentSave = null;
@@ -96,14 +120,18 @@ function convertAndDownload(targetGroup) {
   if (targetGroup.key === state.sourceGroup.key) return;
   clearFeedback();
   try {
+    const fileName = outputFileName(state);
     const result = patchSavePlatform(state.bytes, targetGroup.output);
     if (result.before.platformType !== state.info.platformType || result.after.platformType !== targetGroup.output) {
       throw new Error("Unexpected conversion result.");
     }
-    const fileName = targetGroup.fileName(state.slot);
     downloadBytes(result.bytes, fileName);
     feedback(`Download started: ${fileName}`);
   } catch (error) {
+    if (error instanceof SavePatcherError && error.code === "invalid_slot") {
+      feedback(error.message, true);
+      return;
+    }
     console.error("HKIA save conversion failed", error);
     feedback(`Conversion to ${targetGroup.label} failed verification. No file was downloaded.`, true);
   }
@@ -116,6 +144,8 @@ function showSave(state) {
   $("playTime").textContent = formatPlayTime(state.info.timePlayedTicks);
   $("resultTitle").textContent = "Save loaded";
   $("saveFileName").textContent = state.fileName;
+  $("slotOverride").hidden = state.slot !== null;
+  $("outputSlotInput").value = "";
   clearFeedback();
   const buttons = $("downloadButtons");
   buttons.replaceChildren();
@@ -138,14 +168,8 @@ function showSave(state) {
       button.setAttribute("aria-label", `${destination.label} unavailable`);
       status.className = "destination-badge";
       status.textContent = "Soon";
-    } else if (state.slot === null) {
-      button.disabled = true;
-      button.title = "Save slot is missing from the filename";
-      button.setAttribute("aria-label", `${destination.label} unavailable: save slot unknown`);
-      status.className = "destination-badge";
-      status.innerHTML = `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/></svg>`;
     } else {
-      button.title = destination.fileName(state.slot);
+      button.title = outputFileName(state);
       button.setAttribute("aria-label", `Download for ${destination.label}`);
       status.className = "destination-action";
       status.setAttribute("aria-hidden", "true");
@@ -156,9 +180,6 @@ function showSave(state) {
     buttons.appendChild(button);
   }
 
-  if (state.slot === null) {
-    feedback("Save slot unknown. Use a standard filename (e.g. save_0.save).", true);
-  }
   setView("success");
 }
 
@@ -215,6 +236,10 @@ function initDragAndDrop() {
 }
 
 function init() {
+  $("outputSlotInput").addEventListener("input", () => {
+    clearFeedback();
+    refreshFileNames();
+  });
   $("chooseButton").addEventListener("click", openFilePicker);
   $("chooseAnotherButton").addEventListener("click", openFilePicker);
   $("errorChooseButton").addEventListener("click", openFilePicker);

@@ -22,7 +22,7 @@ html = html.replace('<script type="module" src="script.js"></script>', '')
 assert html != raw_html
 assert script.count('from "./parser.js"') == 1
 
-result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'pageerrors': []}
+result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'filename_independent_conversion': False,'manual_slot_override': False,'legacy_alias_removed': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'pageerrors': []}
 
 with sync_playwright() as play:
     chromium_path = os.environ.get('CHROMIUM_PATH') or shutil.which('chromium') or shutil.which('chromium-browser')
@@ -92,18 +92,56 @@ with sync_playwright() as play:
         page.locator('.destination--apple').click()
     assert entry.value.suggested_filename=='save_0003.save'
 
-    # The previously used Apple Arcade filename remains a supported INPUT alias.
+    # Unknown input filenames are still valid saves: only the BINARY identifies
+    # the source platform. No slot guessing, and no need for a specific extension.
+    send(SRC[0].read_bytes(), 'holiday_export.bin')
+    assert page.locator('#platformName').inner_text()=='Steam'
+    assert page.locator('#slotOverride').is_visible()
+    assert page.locator('.destination-button:enabled').count()==3
+    assert page.locator('.destination--apple').get_attribute('title')=='converted.save'
+    with page.expect_download(timeout=60000) as entry:
+        page.locator('.destination--apple').click()
+    assert entry.value.suggested_filename=='converted.save'
+    with tempfile.TemporaryDirectory() as d:
+        out=Path(d)/'converted.save'
+        entry.value.save_as(out)
+        assert page.evaluate('(b)=>window.__realParser.parseSave(new Uint8Array(b)).platformType',list(out.read_bytes()))==7
+    result['filename_independent_conversion']=True
+
+    # Optional slot is ONLY an output filename choice. Respect leading zeroes;
+    # a typo is rejected, never silently replaced with save_0.save.
+    send(SRC[0].read_bytes(),'custom_backup.save')
+    assert page.locator('.destination-button:enabled').count()==3
+    page.locator('#outputSlotInput').fill('0004')
+    assert page.locator('.destination--switch').get_attribute('title')=='save_0004.save'
+    with page.expect_download(timeout=60000) as entry:
+        page.locator('.destination--switch').click()
+    assert entry.value.suggested_filename=='save_0004.save'
+    page.locator('#outputSlotInput').fill('not-a-number')
+    page.locator('.destination--switch').click()
+    assert 'Enter a valid' in page.locator('#conversionFeedback').inner_text()
+    page.locator('#outputSlotInput').fill('9007199254740992')
+    page.locator('.destination--switch').click()
+    assert 'Enter a valid' in page.locator('#conversionFeedback').inner_text()
+    result['manual_slot_override']=True
+
+    # Unverified 'Save_HeroesFate' alias must NOT be auto-parsed, but arbitrary
+    # save filenames must remain usable after this exception is removed.
     send(SRC[1].read_bytes(), 'Save_HeroesFate_004.save')
-    assert page.locator('.destination--steam').get_attribute('title')=='save_004.save'
+    assert page.locator('#platformName').inner_text()=='Nintendo Switch'
+    assert page.locator('#slotOverride').is_visible()
+    assert page.locator('.destination--steam').get_attribute('title')=='converted.save'
+    page.locator('#outputSlotInput').fill('004')
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--steam').click()
     assert entry.value.suggested_filename=='save_004.save'
+    result['legacy_alias_removed']=True
     result['slot_preserved']=True
 
-    # Missing slot must fail closed, rather than silently write to save_0.save.
-    send(SRC[0].read_bytes(),'custom_backup.save')
-    assert page.locator('.destination-button:enabled').count()==0
-    assert 'Save slot unknown' in page.locator('#conversionFeedback').inner_text()
+    # Standard names keep the compact approved UI with no extra slot control.
+    send(SRC[0].read_bytes(), 'save_5.save')
+    assert page.locator('#slotOverride').is_hidden()
+    assert page.locator('.destination--apple').get_attribute('title')=='save_5.save'
 
     # Invalid file must fail before presenting actions.
     page.locator('#fileInput').set_input_files([{'name':'save_0.save','mimeType':'application/octet-stream','buffer':b'bad'}])
