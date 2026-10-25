@@ -15,14 +15,14 @@ const $ = (id) => document.getElementById(id);
 const PLATFORM_GROUPS = Object.freeze([
   Object.freeze({ key: "steam", label: "Steam", inputs: [PLATFORM.WINDOWS_STEAM], output: PLATFORM.WINDOWS_STEAM, enabled: true, fileName: (slot) => `save_${slot}.save` }),
   Object.freeze({ key: "switch", label: "Nintendo Switch", inputs: [PLATFORM.SWITCH], output: PLATFORM.SWITCH, enabled: true, fileName: (slot) => `save_${slot}.save` }),
-  Object.freeze({ key: "apple", label: "Apple Arcade", inputs: [4, 5, 6, 7], output: PLATFORM.APPLE_ARCADE, enabled: true, fileName: (slot) => `save_${slot}.save` }),
+  Object.freeze({ key: "apple", label: "Apple Arcade", inputs: [4, 5, 6, 7], output: PLATFORM.APPLE_ARCADE, enabled: true, fileName: (slot) => `Save_HeroesFate_${slot}.save` }),
   Object.freeze({ key: "ps5", label: "PlayStation 5", inputs: [PLATFORM.PS5], output: PLATFORM.PS5, enabled: true, fileName: (slot) => `save_${slot}.save` })
 ]);
 
 const groupFor = (id) => PLATFORM_GROUPS.find((group) => group.inputs.includes(id)) ?? null;
 
 function parseSlot(fileName) {
-  const match = /^save_(\d+)\.save$/i.exec(fileName || "");
+  const match = /^(?:save|Save_HeroesFate)_(\d+)\.save$/i.exec(fileName || "");
   if (!match) return null;
   const slot = Number(match[1]);
   // Preserve slot digits exactly (including leading zeroes). Never guess slot 0.
@@ -30,10 +30,11 @@ function parseSlot(fileName) {
 }
 
 // Filename never determines whether a save is valid or which platform it belongs to.
-// Retain a standard save_<slot>.save filename; otherwise preserve the uploaded
-// filename verbatim. Users can rename the downloaded file as needed.
-function outputFileName(state) {
-  return state.slot !== null ? `save_${state.slot}.save` : state.fileName;
+// Recognize the verified Steam/Switch and Apple Arcade slot filenames.
+// Use the destination platform filename for recognized slots; preserve any
+// other uploaded basename verbatim without guessing a slot.
+function outputFileName(state, destination) {
+  return state.slot !== null ? destination.fileName(state.slot) : state.fileName;
 }
 
 let currentSave = null;
@@ -119,7 +120,7 @@ function convertAndDownload(targetGroup) {
   if (targetGroup.key === state.sourceGroup.key) return;
   clearFeedback();
   try {
-    const fileName = outputFileName(state);
+    const fileName = outputFileName(state, targetGroup);
     const result = patchSavePlatform(state.bytes, targetGroup.output);
     if (result.before.platformType !== state.info.platformType || result.after.platformType !== targetGroup.output) {
       throw new Error("Unexpected conversion result.");
@@ -162,7 +163,7 @@ function showSave(state) {
       status.className = "destination-badge";
       status.textContent = "Soon";
     } else {
-      button.title = outputFileName(state);
+      button.title = outputFileName(state, destination);
       button.setAttribute("aria-label", `Download for ${destination.label}`);
       status.className = "destination-action";
       status.setAttribute("aria-hidden", "true");

@@ -22,7 +22,7 @@ html = html.replace('<script type="module" src="script.js"></script>', '')
 assert html != raw_html
 assert script.count('from "./parser.js"') == 1
 
-result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'filename_independent_conversion': False,'original_name_preserved': False,'legacy_alias_removed': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'notice_theme_checks':{}, 'notice_reset':False,'pageerrors': []}
+result = {'native_esm_loaded': False,'actual_save_downloads': 0,'slot_preserved': False,'filename_independent_conversion': False,'original_name_preserved': False,'apple_filename_alias_recognized': False,'bad_input_rejected': False,'missing_lz4_rejected_on_download': False,'drag_drop': False,'ui_colors': {}, 'notice_theme_checks':{}, 'notice_reset':False,'pageerrors': []}
 
 with sync_playwright() as play:
     chromium_path = os.environ.get('CHROMIUM_PATH') or shutil.which('chromium') or shutil.which('chromium-browser')
@@ -75,14 +75,14 @@ with sync_playwright() as play:
             assert notice.get_attribute('aria-live')=='polite'
             assert f'feedback--{target}' in (notice.get_attribute('class') or '')
             assert notice.locator('.feedback-heading').inner_text() == f'{button.locator(".destination-name").inner_text()} download started'
-            assert notice.locator('.feedback-filename').inner_text() == 'save_0.save'
+            expected_name='Save_HeroesFate_0.save' if target=='apple' else 'save_0.save'
+            assert notice.locator('.feedback-filename').inner_text() == expected_name
             assert notice.evaluate('(el)=>getComputedStyle(el).borderLeftWidth')=='5px'
             assert notice.evaluate('(el)=>getComputedStyle(el).fontSize')=='14px'
             label_rgb=notice.locator('.feedback-heading').evaluate('(el)=>getComputedStyle(el).color')
             theme_colors={'steam':'rgb(19, 121, 159)','switch':'rgb(170, 32, 56)','apple':'rgb(172, 40, 105)','ps5':'rgb(108, 57, 169)'}
             assert label_rgb==theme_colors[target],(target,label_rgb)
             result['notice_theme_checks'][f'{source}->{target}']=label_rgb
-            expected_name='save_0.save'
             assert download.suggested_filename==expected_name,(download.suggested_filename,expected_name)
             with tempfile.TemporaryDirectory() as d:
                 out=Path(d) / expected_name
@@ -107,12 +107,12 @@ with sync_playwright() as play:
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--switch').click()
     assert entry.value.suggested_filename=='save_0003.save'
-    # Apple destination must keep the same save_<slot>.save convention.
+    # Apple Arcade output must use the observed Save_HeroesFate_<slot>.save convention.
     send(SRC[0].read_bytes(), 'save_0003.save')
-    assert page.locator('.destination--apple').get_attribute('title')=='save_0003.save'
+    assert page.locator('.destination--apple').get_attribute('title')=='Save_HeroesFate_0003.save'
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--apple').click()
-    assert entry.value.suggested_filename=='save_0003.save'
+    assert entry.value.suggested_filename=='Save_HeroesFate_0003.save'
 
     # Arbitrary filenames are valid input names when their BINARY is valid.
     # The complete original basename is used as the download filename, even
@@ -140,20 +140,25 @@ with sync_playwright() as play:
     assert entry.value.suggested_filename=='custom_backup.save'
     result['original_name_preserved']=True
 
-    # No HeroesFate alias: unlike save_<slot>.save it is treated generically.
+    # Recognize the real Apple filename as a slot alias; derive output
+    # basenames from destination, never from the binary platform or source.
     send(SRC[1].read_bytes(), 'Save_HeroesFate_004.save')
     assert page.locator('#platformName').inner_text()=='Nintendo Switch'
-    assert page.locator('.destination--steam').get_attribute('title')=='Save_HeroesFate_004.save'
+    assert page.locator('.destination--steam').get_attribute('title')=='save_004.save'
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--steam').click()
+    assert entry.value.suggested_filename=='save_004.save'
+    assert page.locator('.destination--apple').get_attribute('title')=='Save_HeroesFate_004.save'
+    with page.expect_download(timeout=60000) as entry:
+        page.locator('.destination--apple').click()
     assert entry.value.suggested_filename=='Save_HeroesFate_004.save'
-    result['legacy_alias_removed']=True
+    result['apple_filename_alias_recognized']=True
     result['slot_preserved']=True
 
     # Standard names keep the compact approved UI with no extra slot control.
     send(SRC[0].read_bytes(), 'save_5.save')
     assert page.locator('#slotOverride').count()==0
-    assert page.locator('.destination--apple').get_attribute('title')=='save_5.save'
+    assert page.locator('.destination--apple').get_attribute('title')=='Save_HeroesFate_5.save'
 
     # Invalid file must fail before presenting actions.
     page.locator('#fileInput').set_input_files([{'name':'save_0.save','mimeType':'application/octet-stream','buffer':b'bad'}])
