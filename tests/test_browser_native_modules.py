@@ -91,6 +91,7 @@ with sync_playwright() as play:
     else:
         switch2_source[switch2_offset+1:switch2_offset+switch2_length]=(12).to_bytes(switch2_length-1,'big')
     send(bytes(switch2_source),'save_004.save')
+    page.wait_for_function("document.getElementById('platformName').textContent === 'Nintendo Switch 2'")
     assert page.locator('#platformName').inner_text()=='Nintendo Switch 2'
     assert page.locator('#downloadButtons .destination-button').count()==4
     assert page.locator('.destination--switch').is_enabled()
