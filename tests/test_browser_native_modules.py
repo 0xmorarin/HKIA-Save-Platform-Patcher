@@ -1,10 +1,3 @@
-"""Browser ESM integration without network: original actual parser.js loaded as a
-Blob ES module; actual script.js import specifier is rebased to that blob URL.
-Final DOM/CSS are the exact authored index.html and style.css.
-No real user save is stored in this distributable test.
-Usage:
- python tests/test_browser_native_modules.py /path/to/steam/save_0.save /path/to/switch/save_0.save
-"""
 from __future__ import annotations
 import sys, json, tempfile, os, shutil
 from pathlib import Path
@@ -35,8 +28,6 @@ with sync_playwright() as play:
     page = browser.new_page(viewport={'width':1440,'height':900}, accept_downloads=True)
     page.on('pageerror', lambda e: result['pageerrors'].append(str(e)))
     page.set_content(html)
-    # Blob modules resolve imports through the browser ES module loader; no text
-    # concatenation or runtime source-code substitution other than the URL specifier.
     boot = '''async ({parser,script})=>{
       const blob = (src)=>URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
       const parserURL=blob(parser);
@@ -92,7 +83,6 @@ with sync_playwright() as play:
             result['actual_save_downloads']+=1
     if os.environ.get('HKIA_SCREENSHOT'):
         page.screenshot(path=os.environ['HKIA_SCREENSHOT'])
-    # Mobile layout must remain readable with the prominent notice visible.
     page.set_viewport_size({'width':390,'height':844})
     mobile_width=page.evaluate('document.documentElement.scrollWidth')
     assert mobile_width<=390,f'Horizontal mobile overflow {mobile_width}'
@@ -101,22 +91,17 @@ with sync_playwright() as play:
         page.screenshot(path=os.environ['HKIA_MOBILE_SCREENSHOT'],full_page=True)
     page.set_viewport_size({'width':1440,'height':900})
 
-    # Slot spelling matters. The binary is unchanged, name can include leading zeros.
     send(SRC[0].read_bytes(), 'save_0003.save')
     assert page.locator('.destination--switch').get_attribute('title')=='save_0003.save'
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--switch').click()
     assert entry.value.suggested_filename=='save_0003.save'
-    # Apple Arcade output must use the observed Save_HeroesFate_<slot>.save convention.
     send(SRC[0].read_bytes(), 'save_0003.save')
     assert page.locator('.destination--apple').get_attribute('title')=='Save_HeroesFate_0003.save'
     with page.expect_download(timeout=60000) as entry:
         page.locator('.destination--apple').click()
     assert entry.value.suggested_filename=='Save_HeroesFate_0003.save'
 
-    # Arbitrary filenames are valid input names when their BINARY is valid.
-    # The complete original basename is used as the download filename, even
-    # for non-.save extensions. No optional slot control is shown.
     send(SRC[0].read_bytes(), 'holiday_export.bin')
     assert page.locator('#platformName').inner_text()=='Steam'
     assert page.locator('#slotOverride').count()==0
@@ -132,7 +117,6 @@ with sync_playwright() as play:
         assert page.evaluate('(b)=>window.__realParser.parseSave(new Uint8Array(b)).platformType',list(out.read_bytes()))==7
     result['filename_independent_conversion']=True
 
-    # Keep arbitrary .save filenames byte-for-byte in the browser suggestion.
     send(SRC[0].read_bytes(), 'custom_backup.save')
     assert page.locator('.destination--switch').get_attribute('title')=='custom_backup.save'
     with page.expect_download(timeout=60000) as entry:
@@ -140,8 +124,6 @@ with sync_playwright() as play:
     assert entry.value.suggested_filename=='custom_backup.save'
     result['original_name_preserved']=True
 
-    # Recognize the real Apple filename as a slot alias; derive output
-    # basenames from destination, never from the binary platform or source.
     send(SRC[1].read_bytes(), 'Save_HeroesFate_004.save')
     assert page.locator('#platformName').inner_text()=='Nintendo Switch'
     assert page.locator('.destination--steam').get_attribute('title')=='save_004.save'
@@ -155,17 +137,14 @@ with sync_playwright() as play:
     result['apple_filename_alias_recognized']=True
     result['slot_preserved']=True
 
-    # Standard names keep the compact approved UI with no extra slot control.
     send(SRC[0].read_bytes(), 'save_5.save')
     assert page.locator('#slotOverride').count()==0
     assert page.locator('.destination--apple').get_attribute('title')=='Save_HeroesFate_5.save'
 
-    # Invalid file must fail before presenting actions.
     page.locator('#fileInput').set_input_files([{'name':'save_0.save','mimeType':'application/octet-stream','buffer':b'bad'}])
     page.locator('#errorView').wait_for(state='visible')
     result['bad_input_rejected']=True
 
-    # Full save with its LZ4 region removed is NOT a valid downloadable output.
     test_bytes=SRC[0].read_bytes()
     magic=bytes.fromhex('a1a2f8333c66ec455baa2dfc6325c2437a779c9906eecff0c022e5f6b6ca73b8')
     assert magic in test_bytes
@@ -178,7 +157,6 @@ with sync_playwright() as play:
     result['notice_reset']=True
     result['missing_lz4_rejected_on_download']=True
 
-    # Drag and drop: real browser DataTransfer object with actual File.
     bb=SRC[0].read_bytes()
     page.evaluate('''b=>{
       let dt=new DataTransfer();dt.items.add(new File([new Uint8Array(b)],'save_0.save',{type:'application/octet-stream'}));

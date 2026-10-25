@@ -1,5 +1,3 @@
-// Run from the project root. No fixture data distributed.
-// Usage: node /path/to/test_backend.mjs path/to/steam/save_0.save path/to/switch/save_0.save
 import fs from "node:fs";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -17,7 +15,7 @@ let tested = 0;
 for (const name of files) {
   const input = new Uint8Array(fs.readFileSync(name));
   const info = parseSave(input);
-  assert.ok([1, 4, 5, 6, 7, 9, 10].includes(info.platformType), `Unexpected source platform in ${name}`);
+  assert.ok([1, 4, 5, 6, 7, 9, 10, 12].includes(info.platformType), `Unexpected source platform in ${name}`);
   const group = (v) => ([4, 5, 6, 7].includes(v) ? "apple" : String(v));
   const destinations = [1, 7, 9, 10].filter((id) => group(id) !== group(info.platformType));
 
@@ -26,7 +24,11 @@ for (const name of files) {
     assert.equal(parseSave(changed.bytes).platformType, target);
     assert.equal(changed.after.applicationVersion, info.applicationVersion);
     assert.equal(changed.after.timePlayedTicks, info.timePlayedTicks);
-    // The patcher's internal code also verifies prefix integrity and decompressed DLC semantics.
+    assert.equal(changed.bytes.length, input.length);
+    for (let i = 0; i < input.length; i++) {
+      if (i >= info.platformOffset && i < info.platformOffset + info.platformTokenLength) continue;
+      assert.equal(changed.bytes[i], input[i], `Unexpected change at file offset ${i} in ${name}`);
+    }
     tested++;
   }
   for (const forbidden of [0, 12, 99]) {

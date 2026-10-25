@@ -9,12 +9,10 @@ import {
 
 const $ = (id) => document.getElementById(id);
 
-// Output IDs are game PlatformType values, NOT DlcPlatform values.
-// PS5 support uses the raw HKIA save payload, like Switch and Steam.
-// This does not claim PS5 console restore or in-game loading was tested.
 const PLATFORM_GROUPS = Object.freeze([
   Object.freeze({ key: "steam", label: "Steam", inputs: [PLATFORM.WINDOWS_STEAM], output: PLATFORM.WINDOWS_STEAM, enabled: true, fileName: (slot) => `save_${slot}.save` }),
   Object.freeze({ key: "switch", label: "Nintendo Switch", inputs: [PLATFORM.SWITCH], output: PLATFORM.SWITCH, enabled: true, fileName: (slot) => `save_${slot}.save` }),
+  Object.freeze({ key: "switch2", label: "Nintendo Switch 2", inputs: [PLATFORM.SWITCH_2], output: null, enabled: true, fileName: null }),
   Object.freeze({ key: "apple", label: "Apple Arcade", inputs: [4, 5, 6, 7], output: PLATFORM.APPLE_ARCADE, enabled: true, fileName: (slot) => `Save_HeroesFate_${slot}.save` }),
   Object.freeze({ key: "ps5", label: "PlayStation 5", inputs: [PLATFORM.PS5], output: PLATFORM.PS5, enabled: true, fileName: (slot) => `save_${slot}.save` })
 ]);
@@ -25,14 +23,9 @@ function parseSlot(fileName) {
   const match = /^(?:save|Save_HeroesFate)_(\d+)\.save$/i.exec(fileName || "");
   if (!match) return null;
   const slot = Number(match[1]);
-  // Preserve slot digits exactly (including leading zeroes). Never guess slot 0.
   return Number.isSafeInteger(slot) && slot >= 0 ? match[1] : null;
 }
 
-// Filename never determines whether a save is valid or which platform it belongs to.
-// Recognize the verified Steam/Switch and Apple Arcade slot filenames.
-// Use the destination platform filename for recognized slots; preserve any
-// other uploaded basename verbatim without guessing a slot.
 function outputFileName(state, destination) {
   return state.slot !== null ? destination.fileName(state.slot) : state.fileName;
 }
@@ -145,7 +138,7 @@ function showSave(state) {
   buttons.replaceChildren();
 
   for (const destination of PLATFORM_GROUPS) {
-    if (destination.key === state.sourceGroup.key) continue;
+    if (destination.output === null || destination.key === state.sourceGroup.key) continue;
     const button = document.createElement("button");
     button.type = "button";
     button.className = `primary-button destination-button destination--${destination.key}`;

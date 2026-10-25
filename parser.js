@@ -1,6 +1,5 @@
 const HEADER_SIZE = 32;
 const MAX_LZ4_RAW_BLOCK = 32768;
-const DLC_MODEL_UNION_TAG = 30;
 const LZ4_BLOCK_ARRAY_EXT_TYPE = 98;
 
 const LZ4_SECTION_MAGIC = Uint8Array.from([
@@ -14,6 +13,7 @@ export const PLATFORM = Object.freeze({
   WINDOWS_STEAM: 1,
   APPLE_ARCADE: 7,
   SWITCH: 9,
+  SWITCH_2: 12,
   PS5: 10
 });
 
@@ -24,14 +24,8 @@ export const PLATFORM_LABELS = Object.freeze({
   6: "Apple Arcade",
   [PLATFORM.APPLE_ARCADE]: "Apple Arcade",
   [PLATFORM.SWITCH]: "Nintendo Switch",
+  [PLATFORM.SWITCH_2]: "Nintendo Switch 2",
   [PLATFORM.PS5]: "PlayStation 5"
-});
-
-const DLC_PLATFORM = Object.freeze({
-  [PLATFORM.WINDOWS_STEAM]: 4,
-  [PLATFORM.APPLE_ARCADE]: 2,
-  [PLATFORM.SWITCH]: 3,
-  [PLATFORM.PS5]: 5
 });
 
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
@@ -505,102 +499,6 @@ function lz4DecompressBlock(source, outputLength) {
   return output;
 }
 
-function pushLength(output, value) {
-  while (value >= 255) {
-    output.push(255);
-    value -= 255;
-  }
-  output.push(value);
-}
-
-function readU32LE(bytes, offset) {
-  return (
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24)
-  ) >>> 0;
-}
-
-function lz4CompressBlock(source) {
-  const length = source.length;
-  const output = [];
-
-  if (length < 13) {
-    const literalNibble = Math.min(length, 15);
-    output.push(literalNibble << 4);
-    if (length >= 15) pushLength(output, length - 15);
-    for (let i = 0; i < length; i++) output.push(source[i]);
-    return Uint8Array.from(output);
-  }
-
-  const table = new Int32Array(65536);
-  table.fill(-1);
-  const searchLimit = length - 12;
-  const matchLimit = length - 5;
-  let anchor = 0;
-  let cursor = 0;
-
-  while (cursor <= searchLimit) {
-    const sequence = readU32LE(source, cursor);
-    const hash = (Math.imul(sequence, 0x9e3779b1) >>> 16) & 0xffff;
-    const reference = table[hash];
-    table[hash] = cursor;
-
-    if (
-      reference >= 0 &&
-      cursor - reference <= 0xffff &&
-      source[reference] === source[cursor] &&
-      source[reference + 1] === source[cursor + 1] &&
-      source[reference + 2] === source[cursor + 2] &&
-      source[reference + 3] === source[cursor + 3]
-    ) {
-      let matchEnd = cursor + 4;
-      let referenceEnd = reference + 4;
-
-      while (matchEnd < matchLimit && source[matchEnd] === source[referenceEnd]) {
-        matchEnd += 1;
-        referenceEnd += 1;
-      }
-
-      const literalLength = cursor - anchor;
-      const matchLength = matchEnd - cursor;
-      const matchCode = matchLength - 4;
-      const tokenIndex = output.length;
-      output.push(0);
-      output[tokenIndex] = (Math.min(literalLength, 15) << 4) | Math.min(matchCode, 15);
-
-      if (literalLength >= 15) pushLength(output, literalLength - 15);
-      for (let i = anchor; i < cursor; i++) output.push(source[i]);
-
-      const distance = cursor - reference;
-      output.push(distance & 0xff, distance >>> 8);
-
-      if (matchCode >= 15) pushLength(output, matchCode - 15);
-
-      const previousCursor = cursor;
-      cursor = matchEnd;
-      anchor = cursor;
-
-      for (let i = previousCursor + 1; i < cursor && i <= searchLimit; i++) {
-        const innerSequence = readU32LE(source, i);
-        const innerHash = (Math.imul(innerSequence, 0x9e3779b1) >>> 16) & 0xffff;
-        table[innerHash] = i;
-      }
-
-      continue;
-    }
-
-    cursor += 1;
-  }
-
-  const literalLength = length - anchor;
-  output.push(Math.min(literalLength, 15) << 4);
-  if (literalLength >= 15) pushLength(output, literalLength - 15);
-  for (let i = anchor; i < length; i++) output.push(source[i]);
-  return Uint8Array.from(output);
-}
-
 function parseLengthStream(bytes) {
   const lengths = [];
   let cursor = 0;
@@ -670,397 +568,6 @@ function parseLz4Section(bytes, searchStart) {
     blocks,
     payload
   };
-}
-
-function parseDbRoot(payload) {
-  let cursor = 0;
-  const root = readContainerHeader(payload, cursor, "array", "verification_failed");
-  if (root.count !== 3) fail("verification_failed", "The HKIA database root uses an unsupported structure.");
-  cursor = root.next;
-
-  const version = readInteger(payload, cursor, "verification_failed");
-  cursor = version.next;
-  const nextId = readInteger(payload, cursor, "verification_failed");
-  cursor = nextId.next;
-
-  const documents = readContainerHeader(payload, cursor, "array", "verification_failed");
-  return {
-    version: version.value,
-    nextId: nextId.value,
-    documentCount: documents.count,
-    documentsStart: documents.next
-  };
-}
-
-function parseIntList(payload, offset, maximumCount = 128) {
-  const start = offset;
-  const header = readContainerHeader(payload, offset, "array", "verification_failed");
-  if (header.count > maximumCount) fail("verification_failed", "A DLC platform list is unexpectedly large.");
-  const values = [];
-  let cursor = header.next;
-
-  for (let i = 0; i < header.count; i++) {
-    const token = readInteger(payload, cursor, "verification_failed");
-    if (!Number.isInteger(token.value)) fail("verification_failed", "A DLC platform value is invalid.");
-    values.push(token.value);
-    cursor = token.next;
-  }
-
-  return { start, end: cursor, values };
-}
-
-function parseGuidList(payload, offset, maximumCount = 128) {
-  const header = readContainerHeader(payload, offset, "array", "verification_failed");
-  if (header.count > maximumCount) fail("verification_failed", "A DLC identifier list is unexpectedly large.");
-  const values = [];
-  let cursor = header.next;
-
-  for (let i = 0; i < header.count; i++) {
-    const guid = readGuid(payload, cursor, "verification_failed");
-    values.push(guid.values);
-    cursor = guid.next;
-  }
-
-  return { values, next: cursor };
-}
-
-function parseBundleState(payload, offset) {
-  const start = offset;
-  const header = readContainerHeader(payload, offset, "array", "verification_failed");
-  if (header.count !== 3) fail("verification_failed", "A DLC bundle uses an unsupported structure.");
-  let cursor = header.next;
-  const guid = readGuid(payload, cursor, "verification_failed");
-  cursor = guid.next;
-  const owned = readBoolean(payload, cursor);
-  cursor = owned.next;
-  const platforms = parseIntList(payload, cursor);
-  cursor = platforms.end;
-
-  return {
-    start,
-    end: cursor,
-    guid: guid.values,
-    isOwned: owned.value,
-    platforms
-  };
-}
-
-function parseContentState(payload, offset) {
-  const start = offset;
-  const header = readContainerHeader(payload, offset, "array", "verification_failed");
-  if (header.count !== 3) fail("verification_failed", "A DLC content state uses an unsupported structure.");
-  let cursor = header.next;
-  const guid = readGuid(payload, cursor, "verification_failed");
-  cursor = guid.next;
-  const owned = readBoolean(payload, cursor);
-  cursor = owned.next;
-  const bundles = parseGuidList(payload, cursor);
-  cursor = bundles.next;
-
-  return {
-    start,
-    end: cursor,
-    guid: guid.values,
-    isOwned: owned.value,
-    ownedFromBundles: bundles.values
-  };
-}
-
-function parseDlcModelAt(payload, offset, dbNextId) {
-  const start = offset;
-  const union = readContainerHeader(payload, offset, "array", "verification_failed");
-  if (union.count !== 2) fail("verification_failed", "The DLC model union uses an unsupported structure.");
-  let cursor = union.next;
-  const tag = readInteger(payload, cursor, "verification_failed");
-  cursor = tag.next;
-  if (tag.value !== DLC_MODEL_UNION_TAG) fail("verification_failed", "The DLC model tag is invalid.");
-
-  const body = readContainerHeader(payload, cursor, "array", "verification_failed");
-  if (body.count !== 4) fail("verification_failed", "The DLC model uses an unsupported structure.");
-  cursor = body.next;
-
-  const modelId = readInteger(payload, cursor, "verification_failed");
-  cursor = modelId.next;
-  // This is a per-save database document identifier, not a fixed DLC schema version.
-  if (!Number.isSafeInteger(modelId.value) || modelId.value <= 0 || modelId.value > dbNextId) {
-    fail("verification_failed", "The DLC model document identifier is invalid.");
-  }
-
-  const bundleHeader = readContainerHeader(payload, cursor, "array", "verification_failed");
-  if (bundleHeader.count > 256) fail("verification_failed", "The DLC bundle count is unexpectedly large.");
-  cursor = bundleHeader.next;
-  const bundles = [];
-
-  for (let i = 0; i < bundleHeader.count; i++) {
-    const bundle = parseBundleState(payload, cursor);
-    bundles.push(bundle);
-    cursor = bundle.end;
-  }
-
-  const contentHeader = readContainerHeader(payload, cursor, "array", "verification_failed");
-  if (contentHeader.count > 256) fail("verification_failed", "The DLC content count is unexpectedly large.");
-  cursor = contentHeader.next;
-  const contents = [];
-
-  for (let i = 0; i < contentHeader.count; i++) {
-    const content = parseContentState(payload, cursor);
-    contents.push(content);
-    cursor = content.end;
-  }
-
-  const seenPlatforms = parseIntList(payload, cursor);
-  cursor = seenPlatforms.end;
-
-  return {
-    start,
-    end: cursor,
-    tag: tag.value,
-    modelId: modelId.value,
-    bundles,
-    contents,
-    seenPlatforms
-  };
-}
-
-function findAllSequences(bytes, needle, start) {
-  const offsets = [];
-  let cursor = start;
-
-  while (cursor <= bytes.length - needle.length) {
-    const found = findSequence(bytes, needle, cursor);
-    if (found < 0) break;
-    offsets.push(found);
-    cursor = found + 1;
-  }
-
-  return offsets;
-}
-
-function findDlcModel(payload, dbRoot) {
-  const prefix = Uint8Array.of(0x92, 0xd2, 0x00, 0x00, 0x00, DLC_MODEL_UNION_TAG);
-  const locations = findAllSequences(payload, prefix, dbRoot.documentsStart);
-  const candidates = [];
-
-  for (const location of locations) {
-    try {
-      candidates.push(parseDlcModelAt(payload, location, dbRoot.nextId));
-    } catch {
-      fail("verification_failed", "A DLC model tag was found with an unsupported structure.");
-    }
-  }
-
-  if (candidates.length > 1) fail("verification_failed", "More than one DLC model was found in the save.");
-  return candidates[0] ?? null;
-}
-
-function packArrayHeader(count) {
-  if (!Number.isInteger(count) || count < 0) fail("verification_failed", "Invalid array length.");
-  if (count <= 15) return Uint8Array.of(0x90 | count);
-  if (count <= 0xffff) return Uint8Array.of(0xdc, count >>> 8, count & 0xff);
-  if (count <= 0xffffffff) {
-    return Uint8Array.of(0xdd, (count >>> 24) & 0xff, (count >>> 16) & 0xff, (count >>> 8) & 0xff, count & 0xff);
-  }
-  fail("verification_failed", "Array length is too large.");
-}
-
-function packUnsigned(value) {
-  if (!Number.isSafeInteger(value) || value < 0) fail("verification_failed", "Invalid unsigned value.");
-  if (value <= 0x7f) return Uint8Array.of(value);
-  if (value <= 0xff) return Uint8Array.of(0xcc, value);
-  if (value <= 0xffff) return Uint8Array.of(0xcd, value >>> 8, value & 0xff);
-  if (value <= 0xffffffff) {
-    return Uint8Array.of(0xce, (value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff);
-  }
-  const output = new Uint8Array(9);
-  output[0] = 0xcf;
-  new DataView(output.buffer).setBigUint64(1, BigInt(value), false);
-  return output;
-}
-
-function concatBytes(parts) {
-  let length = 0;
-  for (const part of parts) length += part.length;
-  const output = new Uint8Array(length);
-  let offset = 0;
-  for (const part of parts) {
-    output.set(part, offset);
-    offset += part.length;
-  }
-  return output;
-}
-
-function packPlatformList(values) {
-  return concatBytes([packArrayHeader(values.length), ...values.map(packUnsigned)]);
-}
-
-function replaceRanges(bytes, replacements) {
-  const ordered = [...replacements].sort((a, b) => a.start - b.start);
-  const parts = [];
-  let cursor = 0;
-
-  for (const replacement of ordered) {
-    if (replacement.start < cursor || replacement.start < 0 || replacement.end < replacement.start || replacement.end > bytes.length) {
-      fail("verification_failed", "Overlapping or invalid save patch ranges were generated.");
-    }
-    parts.push(bytes.subarray(cursor, replacement.start));
-    parts.push(replacement.data);
-    cursor = replacement.end;
-  }
-
-  parts.push(bytes.subarray(cursor));
-  return concatBytes(parts);
-}
-
-function targetBundlePlatforms(bundle, targetDlcPlatform) {
-  if (bundle.isOwned || bundle.platforms.values.length > 0) return [targetDlcPlatform];
-  return [];
-}
-
-function patchDlcPayload(payload, model, targetDlcPlatform) {
-  if (!model) return payload;
-  const replacements = [];
-
-  for (const bundle of model.bundles) {
-    replacements.push({
-      start: bundle.platforms.start,
-      end: bundle.platforms.end,
-      data: packPlatformList(targetBundlePlatforms(bundle, targetDlcPlatform))
-    });
-  }
-
-  replacements.push({
-    start: model.seenPlatforms.start,
-    end: model.seenPlatforms.end,
-    data: packPlatformList([targetDlcPlatform])
-  });
-
-  return replaceRanges(payload, replacements);
-}
-
-function splitPayload(payload, originalLengths) {
-  const chunks = [];
-  let offset = 0;
-
-  for (const originalLength of originalLengths) {
-    if (offset >= payload.length) break;
-    const length = Math.min(originalLength, payload.length - offset);
-    if (length > 0) {
-      chunks.push(payload.subarray(offset, offset + length));
-      offset += length;
-    }
-  }
-
-  while (offset < payload.length) {
-    const length = Math.min(MAX_LZ4_RAW_BLOCK, payload.length - offset);
-    chunks.push(payload.subarray(offset, offset + length));
-    offset += length;
-  }
-
-  if (chunks.length === 0) fail("verification_failed", "The HKIA save payload is empty.");
-  return chunks;
-}
-
-function packExtension(type, data) {
-  const typeByte = type & 0xff;
-  if (data.length <= 0xff) return concatBytes([Uint8Array.of(0xc7, data.length, typeByte), data]);
-  if (data.length <= 0xffff) {
-    return concatBytes([Uint8Array.of(0xc8, data.length >>> 8, data.length & 0xff, typeByte), data]);
-  }
-  return concatBytes([
-    Uint8Array.of(0xc9, (data.length >>> 24) & 0xff, (data.length >>> 16) & 0xff, (data.length >>> 8) & 0xff, data.length & 0xff, typeByte),
-    data
-  ]);
-}
-
-function packBin32(data) {
-  const length = data.length;
-  return concatBytes([
-    Uint8Array.of(0xc6, (length >>> 24) & 0xff, (length >>> 16) & 0xff, (length >>> 8) & 0xff, length & 0xff),
-    data
-  ]);
-}
-
-function buildLz4Wrapper(payload, originalLengths) {
-  const chunks = splitPayload(payload, originalLengths);
-  const lengths = chunks.map((chunk) => chunk.length);
-  const lengthPayload = concatBytes(lengths.map(packUnsigned));
-  const compressed = chunks.map(lz4CompressBlock);
-  return concatBytes([
-    packArrayHeader(compressed.length + 1),
-    packExtension(LZ4_BLOCK_ARRAY_EXT_TYPE, lengthPayload),
-    ...compressed.map(packBin32)
-  ]);
-}
-
-function equalBytes(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
-
-function equalNumberArray(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-}
-
-function equalGuid(a, b) {
-  return equalNumberArray(a, b);
-}
-
-function equalGuidList(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (!equalGuid(a[i], b[i])) return false;
-  return true;
-}
-
-function verifyDlcSemanticChange(beforeModel, afterModel, targetDlcPlatform) {
-  if (!beforeModel && !afterModel) return;
-  if (!beforeModel || !afterModel) fail("verification_failed", "The DLC model appeared or disappeared during patching.");
-
-  if (
-    beforeModel.tag !== afterModel.tag ||
-    beforeModel.modelId !== afterModel.modelId ||
-    beforeModel.bundles.length !== afterModel.bundles.length ||
-    beforeModel.contents.length !== afterModel.contents.length
-  ) {
-    fail("verification_failed", "The DLC model structure changed unexpectedly.");
-  }
-
-  if (!equalNumberArray(afterModel.seenPlatforms.values, [targetDlcPlatform])) {
-    fail("verification_failed", "The DLC platform state was not normalized correctly.");
-  }
-
-  for (let i = 0; i < beforeModel.bundles.length; i++) {
-    const before = beforeModel.bundles[i];
-    const after = afterModel.bundles[i];
-    const expectedPlatforms = targetBundlePlatforms(before, targetDlcPlatform);
-
-    if (!equalGuid(before.guid, after.guid) || before.isOwned !== after.isOwned || !equalNumberArray(after.platforms.values, expectedPlatforms)) {
-      fail("verification_failed", "A DLC bundle changed outside the allowed platform fields.");
-    }
-  }
-
-  for (let i = 0; i < beforeModel.contents.length; i++) {
-    const before = beforeModel.contents[i];
-    const after = afterModel.contents[i];
-
-    if (
-      !equalGuid(before.guid, after.guid) ||
-      before.isOwned !== after.isOwned ||
-      !equalGuidList(before.ownedFromBundles, after.ownedFromBundles)
-    ) {
-      fail("verification_failed", "A DLC content state changed unexpectedly.");
-    }
-  }
-}
-
-function comparePrefixExceptPlatform(source, output, end, platformStart, platformEnd) {
-  if (end > source.length || end > output.length) fail("verification_failed", "The save prefix length changed unexpectedly.");
-  for (let i = 0; i < end; i++) {
-    if (i >= platformStart && i < platformEnd) continue;
-    if (source[i] !== output[i]) fail("verification_failed", "Unexpected save metadata changed during patching.");
-  }
 }
 
 export function parseSave(input) {
@@ -1140,12 +647,14 @@ export function parseSave(input) {
   };
 }
 
-const SUPPORTED_SOURCE_IDS = new Set([1, 4, 5, 6, 7, 9, 10]);
+const SUPPORTED_SOURCE_IDS = new Set([1, 4, 5, 6, 7, 9, 10, 12]);
 const SUPPORTED_TARGET_IDS = new Set([1, 7, 9, 10]);
+
 function platformGroup(platformType) {
   if ([4, 5, 6, 7].includes(platformType)) return "apple";
   if (platformType === 1) return "steam";
   if (platformType === 9) return "switch";
+  if (platformType === 12) return "switch2";
   if (platformType === 10) return "ps5";
   return null;
 }
@@ -1162,69 +671,39 @@ export function patchSavePlatform(input, requestedTarget) {
   if (platformGroup(before.platformType) === platformGroup(requestedTarget)) {
     fail("unsupported_platform", "Conversion within the same platform group is unnecessary.");
   }
-  const lz4Before = parseLz4Section(sourceBytes, before.platformOffset + before.platformTokenLength);
-  if (!lz4Before) {
+
+  if (!parseLz4Section(sourceBytes, before.platformOffset + before.platformTokenLength)) {
     fail("verification_failed", "This save is missing its required HKIA LZ4 payload section.");
   }
-  const prefix = sourceBytes.slice(0, lz4Before ? lz4Before.wrapperOffset : sourceBytes.length);
-  const token = readInteger(prefix, before.platformOffset, "verification_failed");
 
+  const output = sourceBytes.slice();
+  const token = readInteger(output, before.platformOffset, "verification_failed");
   if (token.next - token.start !== before.platformTokenLength || token.value !== before.platformType) {
     fail("verification_failed", "The platform field changed unexpectedly before patching.");
   }
-
-  const targetPlatform = requestedTarget;
-  const targetDlcPlatform = DLC_PLATFORM[targetPlatform];
-
-  writeSmallIntegerInPlace(prefix, token, targetPlatform);
-
-  let output;
-  let beforeModel = null;
-  let expectedPayload = null;
-
-  if (lz4Before) {
-    const dbBefore = parseDbRoot(lz4Before.payload);
-    beforeModel = findDlcModel(lz4Before.payload, dbBefore);
-    expectedPayload = patchDlcPayload(lz4Before.payload, beforeModel, targetDlcPlatform);
-    const wrapper = beforeModel ? buildLz4Wrapper(expectedPayload, lz4Before.rawLengths) : sourceBytes.subarray(lz4Before.wrapperOffset);
-    output = beforeModel ? concatBytes([prefix, wrapper]) : concatBytes([prefix, sourceBytes.subarray(lz4Before.wrapperOffset)]);
-  } else {
-    output = prefix;
-  }
+  writeSmallIntegerInPlace(output, token, requestedTarget);
 
   const after = parseSave(output);
-
   if (
     after.applicationVersion !== before.applicationVersion ||
     after.applicationVersionInt !== before.applicationVersionInt ||
     after.timePlayedTicks !== before.timePlayedTicks ||
     after.platformOffset !== before.platformOffset ||
-    after.platformType !== targetPlatform
+    after.platformTokenLength !== before.platformTokenLength ||
+    after.platformType !== requestedTarget ||
+    output.length !== sourceBytes.length
   ) {
     fail("verification_failed", "The patched save did not pass metadata verification.");
   }
 
-  if (lz4Before) {
-    const lz4After = parseLz4Section(output, after.platformOffset + after.platformTokenLength);
-    if (!lz4After) fail("verification_failed", "The patched save lost its HKIA payload section.");
-
-    comparePrefixExceptPlatform(sourceBytes, output, lz4Before.wrapperOffset, before.platformOffset, before.platformOffset + before.platformTokenLength);
-
-    if (beforeModel) {
-      if (!equalBytes(lz4After.payload, expectedPayload)) fail("verification_failed", "The decompressed patched payload does not match the intended data.");
-      const dbAfter = parseDbRoot(lz4After.payload);
-      const afterModel = findDlcModel(lz4After.payload, dbAfter);
-      verifyDlcSemanticChange(beforeModel, afterModel, targetDlcPlatform);
-    } else {
-      if (!equalBytes(sourceBytes.subarray(lz4Before.wrapperOffset), output.subarray(lz4After.wrapperOffset))) {
-        fail("verification_failed", "The save payload changed even though no DLC model was present.");
-      }
+  for (let i = 0; i < sourceBytes.length; i++) {
+    if (i >= token.start && i < token.next) continue;
+    if (sourceBytes[i] !== output[i]) {
+      fail("verification_failed", "The save changed outside its platform field.");
     }
-  } else {
-    comparePrefixExceptPlatform(sourceBytes, output, sourceBytes.length, before.platformOffset, before.platformOffset + before.platformTokenLength);
   }
 
-  return { bytes: output, before, after, targetPlatform };
+  return { bytes: output, before, after, targetPlatform: requestedTarget };
 }
 
 export function formatPlayTime(ticks) {

@@ -1,12 +1,10 @@
-// Regression for the actual patched PR#1 parser.js (run from project root).
-// Does not need or distribute user save data.
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 const {parseSave,patchSavePlatform}=await import(pathToFileURL(path.join(process.cwd(),'parser.js')).href);
-const SOURCE_IDS=[1,4,5,6,7,9,10],TARGET_IDS=[1,7,9,10];
+const SOURCE_IDS=[1,4,5,6,7,9,10,12],TARGET_IDS=[1,7,9,10];
 const grp=(n)=>[4,5,6,7].includes(n)?'apple':String(n);
-const mappedDlc=n=>[4,5,6,7].includes(n)?2:n===1?4:n===9?3:5;
+const mappedDlc=n=>[4,5,6,7].includes(n)?2:n===1?4:(n===9||n===12)?3:5;
 const mpNum=n=>n<=127?[n]:n<=255?[0xcc,n]:n<=65535?[0xcd,n>>>8,n&255]:[0xce,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];
 const mpArr=parts=>[0x90+parts.length,...parts.flat()];
 const guid=parts=>parts.flatMap(mpNum);
@@ -23,12 +21,13 @@ function buildDlcModel(dlc,modelId=2){
   const body=mpArr([mpNum(modelId),bundles,contents,mpArr([mpNum(dlc)])]);
   return mpArr([[0xd2,0,0,0,30],body]);
 }
-function buildFixture(platform,{lz4=true,modelId=2,nextId=Math.max(3,modelId+1)}={}){
-  const prefix=[...HEADER,0x98,...guid([1,2,3,4]),0xa5,...VERSION,1,0xc0,4,0x80,0x90,0x91,platform];
+function buildFixture(platform,{lz4=true,modelId=2,nextId=Math.max(3,modelId+1),encoding="fixint"}={}){
+  const encodings={fixint:[platform],uint8:[0xcc,platform],uint16:[0xcd,0,platform],int8:[0xd0,platform]};
+  const prefix=[...HEADER,0x98,...guid([1,2,3,4]),0xa5,...VERSION,1,0xc0,4,0x80,0x90,0x91,...encodings[encoding]];
   if(!lz4)return Uint8Array.from(prefix);
   const raw=mpArr([mpNum(1),mpNum(nextId),mpArr([buildDlcModel(mappedDlc(platform),modelId)])]);
   assert.ok(raw.length>15&&raw.length<127);
-  const compressed=[0xf0,raw.length-15,...raw]; // Valid final literal-only LZ4 block
+  const compressed=[0xf0,raw.length-15,...raw];
   const wrapper=[0x92,0xc7,1,98,raw.length,0xc6,0,0,0,compressed.length,...compressed];
   return Uint8Array.from([...prefix,...MAGIC,...wrapper]);
 }
@@ -63,47 +62,72 @@ function rawLz4Payload(file){
   assert.equal(out.length,expected,'LZ4 decompressed length mismatch');
   return Uint8Array.from(out);
 }
-let headerTests=0,dlcTests=0,rejections=0;
+let headerTests=0,preservationTests=0,rejections=0,dynamicCases=0,encodingCases=0,malformedIdCases=0;
 for(const source of SOURCE_IDS){
   for(const target of TARGET_IDS){
     if(grp(source)===grp(target)){
       assert.throws(()=>patchSavePlatform(buildFixture(source,{lz4:false}),target),{code:'unsupported_platform'});
-      rejections++;continue;
+      rejections++;
+      continue;
     }
-    // Header-only save is not a valid full HKIA save: do not emit a truncated file.
-    assert.throws(()=>patchSavePlatform(buildFixture(source,{lz4:false}),target),{code:'verification_failed'});headerTests++;
-    const input=buildFixture(source),out=patchSavePlatform(input,target);
+    assert.throws(()=>patchSavePlatform(buildFixture(source,{lz4:false}),target),{code:'verification_failed'});
+    headerTests++;
+    const input=buildFixture(source);
+    const out=patchSavePlatform(input,target);
+    const before=parseSave(input);
     assert.equal(parseSave(out.bytes).platformType,target);
-    const original=rawLz4Payload(input),changed=rawLz4Payload(out.bytes);
-    assert.equal(changed.length,original.length,'DLC payload unexpectedly resized');
-    const changedOffsets=[...original.keys()].filter(i=>original[i]!==changed[i]);
-    assert.equal(changedOffsets.length,2,'Expected one DLC bundle platform and one seenPlatforms update');
-    assert.ok(changedOffsets.every(i=>changed[i]===mappedDlc(target)));
-    const back=patchSavePlatform(out.bytes,[4,5,6].includes(source)?7:source);
-    assert.deepEqual(rawLz4Payload(back.bytes),original,'Round-trip altered non-platform DLC state');
-    dlcTests++;
+    assert.equal(out.bytes.length,input.length);
+    assert.deepEqual(rawLz4Payload(out.bytes),rawLz4Payload(input));
+    for(let i=0;i<input.length;i++){
+      if(i>=before.platformOffset && i<before.platformOffset+before.platformTokenLength)continue;
+      assert.equal(out.bytes[i],input[i],'Unexpected modification outside PlatformType');
+    }
+    assert.equal(out.bytes[before.platformOffset],target);
+    if(source!==12){
+      const back=patchSavePlatform(out.bytes,[4,5,6].includes(source)?7:source);
+      if(source!==4 && source!==5 && source!==6)assert.deepEqual(back.bytes,input,'Round-trip altered original save');
+      assert.deepEqual(rawLz4Payload(back.bytes),rawLz4Payload(input));
+    }
+    preservationTests++;
   }
 }
-// A DLC model document may have a dynamic ID (e.g. Apple Arcade 5429).
-let dynamicCases=0;
-for(const modelId of [2, 137, 5429, 65535]) {
-  for(const platform of [1,4,7,9,10]) {
-    const input=buildFixture(platform,{modelId});
-    const target= platform===1?9:1;
-    const result=patchSavePlatform(input,target);
-    assert.equal(parseSave(result.bytes).platformType,target);
-    const roundTrip=patchSavePlatform(result.bytes,platform===4?7:platform);
-    assert.deepEqual(rawLz4Payload(roundTrip.bytes),rawLz4Payload(input));
+for(const modelId of [2,137,5429,65535]){
+  for(const source of SOURCE_IDS){
+    const input=buildFixture(source,{modelId});
+    const target=source===1?9:1;
+    const out=patchSavePlatform(input,target);
+    assert.equal(parseSave(out.bytes).platformType,target);
+    assert.deepEqual(rawLz4Payload(input),rawLz4Payload(out.bytes));
     dynamicCases++;
   }
 }
-// A model document ID beyond the database next ID must be rejected.
-assert.throws(()=>patchSavePlatform(buildFixture(7,{modelId:5429,nextId:100}),1),{code:'verification_failed'});
-dynamicCases++;
+for(const encoding of ['fixint','uint8','uint16','int8']){
+  for(const source of SOURCE_IDS){
+    const input=buildFixture(source,{encoding});
+    const target=source===1?9:1;
+    const out=patchSavePlatform(input,target);
+    const before=parseSave(input);
+    assert.equal(parseSave(out.bytes).platformType,target);
+    assert.equal(out.bytes.length,input.length);
+    for(let i=0;i<input.length;i++){
+      if(i>=before.platformOffset&&i<before.platformOffset+before.platformTokenLength)continue;
+      assert.equal(out.bytes[i],input[i]);
+    }
+    encodingCases++;
+  }
+}
+const unusual=buildFixture(7,{modelId:5429,nextId:100});
+const unchangedDlc=patchSavePlatform(unusual,9);
+assert.deepEqual(rawLz4Payload(unchangedDlc.bytes),rawLz4Payload(unusual));
+malformedIdCases++;
 for(const bad of [0,2,3,8,11,12,99,128,-1,undefined]){
-  assert.throws(()=>patchSavePlatform(buildFixture(1),bad),{code:'unsupported_platform'});rejections++;
+  assert.throws(()=>patchSavePlatform(buildFixture(1),bad),{code:'unsupported_platform'});
+  rejections++;
 }
-for(const bad of [0,2,3,8,11,12,99]){
-  assert.throws(()=>patchSavePlatform(buildFixture(bad),9),{code:'unsupported_platform'});rejections++;
+for(const bad of [0,2,3,8,11,99]){
+  assert.throws(()=>patchSavePlatform(buildFixture(bad),9),{code:'unsupported_platform'});
+  rejections++;
 }
-console.log(JSON.stringify({status:'PASS',missingLz4Rejections:headerTests,dlcRoundtrips:dlcTests,expectedRejections:rejections,dynamicIdTests:dynamicCases,total:headerTests+dlcTests+rejections+dynamicCases},null,2));
+assert.throws(()=>patchSavePlatform(buildFixture(9).subarray(0,buildFixture(9).length-1),1),{code:'verification_failed'});
+rejections++;
+console.log(JSON.stringify({status:'PASS',missingLz4Rejections:headerTests,preservationTests,expectedRejections:rejections,dynamicIdTests:dynamicCases,encodingTests:encodingCases,opaqueDlcIdTests:malformedIdCases,total:headerTests+preservationTests+rejections+dynamicCases+encodingCases+malformedIdCases},null,2));

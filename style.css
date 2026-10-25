@@ -469,7 +469,7 @@ h1 {
 }
 
 
-/* UI-only overrides. PR #1 original body/sky/cloud/sprinkle/star styles remain untouched. */
+
 .app-shell { width: min(720px, calc(100% - 28px)); gap: 22px; }
 .hero h1 { font-size: clamp(1.9rem, 4vw, 2.6rem); line-height: 1.15; letter-spacing: -.045em; }
 .patch-card { width: min(625px, 100%); min-height: 300px; padding: 34px 34px 32px; border-radius: 27px; }
@@ -496,8 +496,7 @@ h1 {
 .destination-name { display:block; flex:1; }
 .destination-action { display:grid; place-items:center; width:29px; height:29px; border-radius:9px; border:1px solid #ddd1f2; background:#fff; color:#755ba6; font-size:1.25rem; font-weight:600; line-height:1; }
 .destination-badge { margin-left:auto; padding:4px 8px; border-radius:8px; background:#f0edf2; color:#9991a4; font-size:.69rem; font-weight:800; }
-/* Conversion notice: stronger visual hierarchy and destination-specific text color.
-   Color is supplementary; the platform name is always present in the heading. */
+
 .conversion-feedback {
   width:100%;
   max-width:none !important;
@@ -535,7 +534,7 @@ h1 {
 .upload-icon { display:grid; place-items:center; width:66px; height:66px; margin:0 auto 21px; background:#f5edff; border-radius:23px; color:#967bc6; }
 .upload-icon svg { width:32px; height:32px; }
 
-/* Desktop-first layout, no changes to background or decorative rules. */
+
 @media (min-width: 761px) {
   .app-shell { width:min(860px,calc(100% - 56px)); }
   .patch-card { width:min(760px,100%); padding:39px 44px 38px; }
@@ -553,7 +552,7 @@ h1 {
 .destination-action svg { display:block; width:20px; height:20px; }
 
 
-/* Platform colors fixed; no character motifs or accent overlays. */
+
 .destination--switch {
   --destination-bg: #d62f49; --destination-hover: #be2941; --destination-fg: #ffffff;
   --destination-border: #b8243b; --destination-action-bg: rgba(255,255,255,.96);
