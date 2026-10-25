@@ -24,7 +24,7 @@ export const PLATFORM_LABELS = Object.freeze({
   6: "Apple Arcade",
   [PLATFORM.APPLE_ARCADE]: "Apple Arcade",
   [PLATFORM.SWITCH]: "Nintendo Switch",
-  [PLATFORM.SWITCH_2]: "Nintendo Switch 2",
+  [PLATFORM.SWITCH_2]: "Nintendo Switch",
   [PLATFORM.PS5]: "PlayStation 5"
 });
 
@@ -653,8 +653,7 @@ const SUPPORTED_TARGET_IDS = new Set([1, 7, 9, 10]);
 function platformGroup(platformType) {
   if ([4, 5, 6, 7].includes(platformType)) return "apple";
   if (platformType === 1) return "steam";
-  if (platformType === 9) return "switch";
-  if (platformType === 12) return "switch2";
+  if (platformType === 9 || platformType === 12) return "switch";
   if (platformType === 10) return "ps5";
   return null;
 }

@@ -16,7 +16,7 @@ for (const name of files) {
   const input = new Uint8Array(fs.readFileSync(name));
   const info = parseSave(input);
   assert.ok([1, 4, 5, 6, 7, 9, 10, 12].includes(info.platformType), `Unexpected source platform in ${name}`);
-  const group = (v) => ([4, 5, 6, 7].includes(v) ? "apple" : String(v));
+  const group = (v) => ([4, 5, 6, 7].includes(v) ? "apple" : [9, 12].includes(v) ? "switch" : String(v));
   const destinations = [1, 7, 9, 10].filter((id) => group(id) !== group(info.platformType));
 
   for (const target of destinations) {
@@ -36,6 +36,9 @@ for (const name of files) {
     tested++;
   }
   assert.throws(() => patchSavePlatform(input, info.platformType), "Same-group conversion should fail");
+  if (info.platformType === 12) {
+    assert.throws(() => patchSavePlatform(input, 9), { code: "unsupported_platform" });
+  }
   tested++;
   console.log(`PASS ${path.basename(name)}: source=${info.platformType}, version=${info.applicationVersion}, conversions=${destinations.join(",")}`);
 }

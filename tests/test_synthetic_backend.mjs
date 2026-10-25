@@ -3,7 +3,7 @@ import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 const {parseSave,patchSavePlatform}=await import(pathToFileURL(path.join(process.cwd(),'parser.js')).href);
 const SOURCE_IDS=[1,4,5,6,7,9,10,12],TARGET_IDS=[1,7,9,10];
-const grp=(n)=>[4,5,6,7].includes(n)?'apple':String(n);
+const grp=(n)=>[4,5,6,7].includes(n)?'apple':(n===9||n===12)?'switch':String(n);
 const mappedDlc=n=>[4,5,6,7].includes(n)?2:n===1?4:(n===9||n===12)?3:5;
 const mpNum=n=>n<=127?[n]:n<=255?[0xcc,n]:n<=65535?[0xcd,n>>>8,n&255]:[0xce,(n>>>24)&255,(n>>>16)&255,(n>>>8)&255,n&255];
 const mpArr=parts=>[0x90+parts.length,...parts.flat()];
@@ -129,5 +129,7 @@ for(const bad of [0,2,3,8,11,99]){
   rejections++;
 }
 assert.throws(()=>patchSavePlatform(buildFixture(9).subarray(0,buildFixture(9).length-1),1),{code:'verification_failed'});
+rejections++;
+assert.throws(()=>patchSavePlatform(buildFixture(12),9),{code:'unsupported_platform'});
 rejections++;
 console.log(JSON.stringify({status:'PASS',missingLz4Rejections:headerTests,preservationTests,expectedRejections:rejections,dynamicIdTests:dynamicCases,encodingTests:encodingCases,opaqueDlcIdTests:malformedIdCases,total:headerTests+preservationTests+rejections+dynamicCases+encodingCases+malformedIdCases},null,2));

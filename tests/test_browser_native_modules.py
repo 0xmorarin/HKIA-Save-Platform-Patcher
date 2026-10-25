@@ -91,22 +91,27 @@ with sync_playwright() as play:
     else:
         switch2_source[switch2_offset+1:switch2_offset+switch2_length]=(12).to_bytes(switch2_length-1,'big')
     send(bytes(switch2_source),'save_004.save')
-    page.wait_for_function("document.getElementById('platformName').textContent === 'Nintendo Switch 2'")
-    assert page.locator('#platformName').inner_text()=='Nintendo Switch 2'
-    assert page.locator('#downloadButtons .destination-button').count()==4
-    assert page.locator('.destination--switch').is_enabled()
+    page.wait_for_function("document.getElementById('saveFileName').textContent === 'save_004.save'")
+    assert page.locator('#platformName').inner_text()=='Nintendo Switch'
+    assert page.locator('#downloadButtons .destination-button').count()==3
+    assert page.locator('.destination--switch').count()==0
     assert page.locator('.destination--switch2').count()==0
-    with page.expect_download(timeout=60000) as entry:
-        page.locator('.destination--switch').click()
-    assert entry.value.suggested_filename=='save_004.save'
-    with tempfile.TemporaryDirectory() as d:
-        converted_path=Path(d)/'save_004.save'
-        entry.value.save_as(converted_path)
-        converted=converted_path.read_bytes()
-        assert page.evaluate('(b)=>window.__realParser.parseSave(new Uint8Array(b)).platformType',list(converted))==9
-        assert len(converted)==len(switch2_source)
-        assert converted[:switch2_offset]==switch2_source[:switch2_offset]
-        assert converted[switch2_offset+switch2_length:]==switch2_source[switch2_offset+switch2_length:]
+    for target,target_id in (('steam',1),('apple',7),('ps5',10)):
+        button=page.locator('.destination--'+target)
+        assert button.is_enabled()
+        with page.expect_download(timeout=60000) as entry:
+            button.click()
+        expected_name='Save_HeroesFate_004.save' if target=='apple' else 'save_004.save'
+        assert entry.value.suggested_filename==expected_name
+        with tempfile.TemporaryDirectory() as d:
+            converted_path=Path(d)/expected_name
+            entry.value.save_as(converted_path)
+            converted=converted_path.read_bytes()
+            assert page.evaluate('(b)=>window.__realParser.parseSave(new Uint8Array(b)).platformType',list(converted))==target_id
+            assert len(converted)==len(switch2_source)
+            assert converted[:switch2_offset]==switch2_source[:switch2_offset]
+            assert converted[switch2_offset+switch2_length:]==switch2_source[switch2_offset+switch2_length:]
+        result['actual_save_downloads']+=1
     result['switch2_input_download']=True
 
     if os.environ.get('HKIA_SCREENSHOT'):
@@ -197,5 +202,6 @@ with sync_playwright() as play:
     assert not result['pageerrors'],result['pageerrors']
     browser.close()
 print(json.dumps(result,ensure_ascii=False,indent=2))
-assert result['actual_save_downloads']==6
+assert result['actual_save_downloads']==9
+assert result['switch2_input_download']
 print('PASS: Chromium native Blob-ESM actual parser/frontend with real binary save fixtures')
